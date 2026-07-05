@@ -32,7 +32,12 @@ jobs:
           KRX_COOKIE: ${{ secrets.KRX_COOKIE }}
           KRX_ID: ${{ secrets.KRX_ID }}
           KRX_PW: ${{ secrets.KRX_PW }}
-        run: python krx_money_flow.py --site-dir site
+        run: |
+          if [ -n "$KRX_COOKIE" ] || { [ -n "$KRX_ID" ] && [ -n "$KRX_PW" ]; }; then
+            python krx_money_flow.py --site-dir site
+          else
+            echo "No KRX credentials configured; publishing committed site/data/latest.json."
+          fi
 
       - uses: actions/configure-pages@v5
 
