@@ -1,6 +1,9 @@
 name: Update FlowRadar site
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
   schedule:
     - cron: "30 8 * * 1-5"
