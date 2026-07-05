@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FlowRadar</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8f5;
+      --panel: #ffffff;
+      --ink: #17201c;
+      --muted: #62706a;
+      --line: #dfe6df;
+      --foreign: #0f766e;
+      --institution: #b45309;
+      --retail: #2563eb;
+      --soft: #eef4f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    header {
+      padding: 28px clamp(16px, 4vw, 48px) 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcf9;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 4vw, 42px);
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .meta span {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    main {
+      width: min(1220px, calc(100% - 32px));
+      margin: 24px auto 42px;
+      display: grid;
+      gap: 22px;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcf9;
+    }
+    h2 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    .hint { color: var(--muted); font-size: 13px; white-space: nowrap; }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      padding: 18px;
+    }
+    .kpi {
+      min-height: 112px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--soft);
+    }
+    .kpi .label { color: var(--muted); font-size: 13px; }
+    .kpi .value { margin-top: 8px; font-size: clamp(24px, 3vw, 34px); font-weight: 750; }
+    .kpi .state { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .chart-wrap { padding: 18px; }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 420px;
+    }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 14px 18px 0;
+    }
+    button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 7px 11px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+    }
+    button.active {
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
+    .table-wrap {
+      overflow: auto;
+      padding: 18px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 740px;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 10px 11px;
+      border-bottom: 1px solid var(--line);
+      text-align: right;
+      white-space: nowrap;
+    }
+    th:first-child, td:first-child,
+    th:nth-child(2), td:nth-child(2) {
+      text-align: left;
+    }
+    th {
+      background: #fbfcf9;
+      color: #35433e;
+      font-weight: 700;
+      position: sticky;
+      top: 0;
+    }
+    .positive { color: #047857; }
+    .negative { color: #b91c1c; }
+    .status {
+      padding: 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    @media (max-width: 760px) {
+      .kpis { grid-template-columns: 1fr; }
+      canvas { height: 330px; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .hint { white-space: normal; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="title">FlowRadar</h1>
+    <div class="meta" id="meta"></div>
+  </header>
+  <main>
+    <section>
+      <div class="section-head">
+        <h2>市场资金方向</h2>
+        <div class="hint">单位：亿韩元，正数为净买入</div>
+      </div>
+      <div class="kpis" id="kpis"><div class="status">加载中</div></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>累计资金流</h2>
+        <div class="hint">外资、机构、散户累计净买卖金额</div>
+      </div>
+      <div class="chart-wrap"><canvas id="flowChart"></canvas></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2>最近明细</h2>
+        <div class="hint">市场与个股数据按日期倒序</div>
+      </div>
+      <div class="tabs" id="tabs"></div>
+      <div class="table-wrap" id="tableWrap"><div class="status">加载中</div></div>
+    </section>
+  </main>
+
+  <script>
+    const investors = ["外资", "机构", "散户"];
+    const colors = {"外资": "#0f766e", "机构": "#b45309", "散户": "#2563eb"};
+    let data = null;
+
+    function formatNumber(value, digits = 0) {
+      return Number(value || 0).toLocaleString("zh-CN", {
+        maximumFractionDigits: digits,
+        minimumFractionDigits: digits
+      });
+    }
+
+    function className(value) {
+      const number = Number(value || 0);
+      if (number > 0) return "positive";
+      if (number < 0) return "negative";
+      return "";
+    }
+
+    function renderMeta() {
+      const meta = data.meta || {};
+      const market = meta.market || "KRX";
+      document.title = `FlowRadar - ${market} 资金流`;
+      document.getElementById("title").textContent = `FlowRadar`;
+      document.getElementById("meta").innerHTML = [
+        `${market} 资金流`,
+        `区间 ${meta.start || "-"} - ${meta.end || "-"}`,
+        `最新交易日 ${meta.latestDate || "-"}`,
+        `生成时间 ${meta.generatedAt || "-"}`
+      ].map(item => `<span>${item}</span>`).join("");
+    }
+
+    function renderKpis() {
+      const host = document.getElementById("kpis");
+      const marketName = `${data.meta?.market || "KOSPI"}市场`;
+      const rows = data.summary.filter(row => row["对象"] === marketName || row["对象"] === "KOSPI市场");
+      host.innerHTML = rows.map(row => `
+        <div class="kpi">
+          <div class="label">${row["指标"]}</div>
+          <div class="value ${className(row["最近值"])}">${formatNumber(row["最近值"], 2)}</div>
+          <div class="state">${row["连续状态"]}</div>
+        </div>
+      `).join("");
+    }
+
+    function drawChart() {
+      const canvas = document.getElementById("flowChart");
+      const ctx = canvas.getContext("2d");
+      const ratio = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * ratio;
+      canvas.height = rect.height * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      const width = rect.width;
+      const height = rect.height;
+      const pad = {left: 58, right: 18, top: 24, bottom: 44};
+      const points = data?.marketFlow || [];
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      if (!points.length) return;
+
+      const values = points.flatMap(row => investors.map(name => Number(row[`${name}累计`] || 0)));
+      let min = Math.min(...values, 0);
+      let max = Math.max(...values, 0);
+      if (min === max) { min -= 1; max += 1; }
+      const plotW = width - pad.left - pad.right;
+      const plotH = height - pad.top - pad.bottom;
+      const x = index => pad.left + (points.length === 1 ? plotW / 2 : (index / (points.length - 1)) * plotW);
+      const y = value => pad.top + (max - value) / (max - min) * plotH;
+
+      ctx.strokeStyle = "#dfe6df";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i <= 4; i++) {
+        const gy = pad.top + i / 4 * plotH;
+        ctx.moveTo(pad.left, gy);
+        ctx.lineTo(width - pad.right, gy);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = "#62706a";
+      ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (let i = 0; i <= 4; i++) {
+        const value = max - i / 4 * (max - min);
+        ctx.fillText(formatNumber(value, 0), pad.left - 8, pad.top + i / 4 * plotH);
+      }
+
+      const zeroY = y(0);
+      ctx.strokeStyle = "#94a39d";
+      ctx.beginPath();
+      ctx.moveTo(pad.left, zeroY);
+      ctx.lineTo(width - pad.right, zeroY);
+      ctx.stroke();
+
+      investors.forEach(name => {
+        ctx.strokeStyle = colors[name];
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        points.forEach((row, index) => {
+          const px = x(index);
+          const py = y(Number(row[`${name}累计`] || 0));
+          if (index === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+      });
+
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      investors.forEach((name, index) => {
+        const lx = pad.left + index * 92;
+        const ly = height - 14;
+        ctx.fillStyle = colors[name];
+        ctx.fillRect(lx, ly - 10, 18, 3);
+        ctx.fillStyle = "#35433e";
+        ctx.fillText(name, lx + 25, ly - 5);
+      });
+
+      ctx.fillStyle = "#62706a";
+      ctx.textAlign = "left";
+      ctx.fillText(points[0]["日期"], pad.left, height - 26);
+      ctx.textAlign = "right";
+      ctx.fillText(points[points.length - 1]["日期"], width - pad.right, height - 26);
+    }
+
+    function tableFor(label, rows) {
+      const recent = [...rows].reverse().slice(0, 30);
+      const columns = Object.keys(recent[0] || {});
+      document.getElementById("tableWrap").innerHTML = `
+        <table>
+          <thead><tr>${columns.map(col => `<th>${col}</th>`).join("")}</tr></thead>
+          <tbody>
+            ${recent.map(row => `<tr>${columns.map(col => {
+              const value = row[col];
+              const numeric = typeof value === "number";
+              const digits = col.includes("累计") || label.includes("市场") ? 2 : 0;
+              return `<td class="${numeric ? className(value) : ""}">${numeric ? formatNumber(value, digits) : value}</td>`;
+            }).join("")}</tr>`).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderTabs() {
+      const tabs = [
+        {label: "市场资金", rows: data.marketFlow},
+        ...Object.entries(data.stockFlows || {}).flatMap(([ticker, frames]) => {
+          const stockTabs = [];
+          if (frames.shares?.length) stockTabs.push({label: `${ticker} 股数`, rows: frames.shares});
+          if (frames.value?.length) stockTabs.push({label: `${ticker} 金额`, rows: frames.value});
+          return stockTabs;
+        })
+      ].filter(tab => tab.rows?.length);
+      const host = document.getElementById("tabs");
+      host.innerHTML = tabs.map((tab, index) => `<button type="button" data-index="${index}" class="${index === 0 ? "active" : ""}">${tab.label}</button>`).join("");
+      host.addEventListener("click", event => {
+        const button = event.target.closest("button");
+        if (!button) return;
+        host.querySelectorAll("button").forEach(item => item.classList.remove("active"));
+        button.classList.add("active");
+        const tab = tabs[Number(button.dataset.index)];
+        tableFor(tab.label, tab.rows);
+      });
+      if (tabs.length) tableFor(tabs[0].label, tabs[0].rows);
+    }
+
+    async function boot() {
+      try {
+        const response = await fetch("data/latest.json", {cache: "no-store"});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        data = await response.json();
+        renderMeta();
+        renderKpis();
+        drawChart();
+        renderTabs();
+      } catch (error) {
+        document.getElementById("kpis").innerHTML = `<div class="status">数据暂不可用</div>`;
+        document.getElementById("tableWrap").innerHTML = `<div class="status">数据暂不可用</div>`;
+      }
+    }
+
+    window.addEventListener("resize", () => {
+      if (data) drawChart();
+    });
+    boot();
+  </script>
+</body>
+</html>
