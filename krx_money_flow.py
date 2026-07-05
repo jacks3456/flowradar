@@ -69,6 +69,9 @@ class KrxClient:
         self.session.headers.update(
             {
                 "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Connection": "close",
+                "Origin": "https://data.krx.co.kr",
                 "Referer": REFERER,
                 "X-Requested-With": "XMLHttpRequest",
             }
