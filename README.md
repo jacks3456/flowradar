@@ -23,29 +23,20 @@ pip install -r requirements.txt
 
 ## KRX 登录
 
-当前 KRX 数据接口会检查登录态。如果你用 Google 登录，没有 KRX 密码，可以复用浏览器 cookie。
-
-### Google 登录方式
-
-1. 在浏览器打开 `https://data.krx.co.kr`，用 Google 登录。
-2. 打开开发者工具，进入 Network。
-3. 随便点一次 KRX 数据查询。
-4. 选中发往 `data.krx.co.kr` 的请求，复制 Request Headers 里的 `Cookie` 值。
-5. 运行脚本前设置：
+当前 KRX 数据接口会检查登录态。EN/SNS 账号建议使用已登录浏览器的 Cookie：
 
 ```bash
-export KRX_COOKIE='JSESSIONID=...; __smVisitorID=...; 其他cookie=...'
+export KRX_COOKIE='JSESSIONID=...; __smVisitorID=...; mdc.client_session=true'
+python krx_money_flow.py
 ```
 
-也可以直接传参：
+也可以运行时传入：
 
 ```bash
-python krx_money_flow.py --krx-cookie 'JSESSIONID=...; __smVisitorID=...'
+python krx_money_flow.py --krx-cookie 'JSESSIONID=...; __smVisitorID=...; mdc.client_session=true'
 ```
 
-### 普通账号密码方式
-
-如果你有 KRX 账号密码，可以设置：
+如果你有可用的 KRX 普通账号密码，也可以设置：
 
 ```bash
 export KRX_ID="你的账号"
@@ -144,7 +135,7 @@ HTML 网页包含：
 部署步骤：
 
 1. 把仓库推到 GitHub。
-2. 在仓库 Settings -> Secrets and variables -> Actions 中新增 `KRX_COOKIE`。
+2. 在仓库 Settings -> Secrets and variables -> Actions 中新增 `KRX_COOKIE`；如果要用账号密码模式，则新增 `KRX_ID` 和 `KRX_PW`。
 3. 在仓库 Settings -> Pages 中选择 GitHub Actions 作为来源。
 4. 到 Actions 手动运行 `Update FlowRadar site`，之后工作流会在交易日定时更新。
 

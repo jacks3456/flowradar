@@ -126,9 +126,9 @@ class KrxClient:
         response = self.session.post(KRX_JSON_URL, data=payload, timeout=30)
         if response.status_code == 400 and "LOGOUT" in response.text:
             raise RuntimeError(
-                "KRX 返回 LOGOUT。Google 登录用户请从浏览器复制 KRX 已登录 cookie，"
-                "通过 KRX_COOKIE 环境变量或 --krx-cookie 传入；普通账号可设置 "
-                "KRX_ID/KRX_PW 或使用 --krx-id/--krx-password。"
+                "KRX 返回 LOGOUT。请设置 KRX_COOKIE 环境变量或使用 --krx-cookie "
+                "传入已登录浏览器里的 KRX Cookie；也可以设置 KRX_ID/KRX_PW "
+                "或使用 --krx-id/--krx-password。"
             )
         response.raise_for_status()
         time.sleep(self.pause_seconds)
