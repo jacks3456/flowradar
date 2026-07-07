@@ -36,8 +36,10 @@ jobs:
           KRX_ID: ${{ secrets.KRX_ID }}
           KRX_PW: ${{ secrets.KRX_PW }}
         run: |
-          if [ -n "$KRX_COOKIE" ] || { [ -n "$KRX_ID" ] && [ -n "$KRX_PW" ]; }; then
-            python krx_money_flow.py --site-dir site
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Push deploy uses committed site/data/latest.json."
+          elif [ -n "$KRX_COOKIE" ] || { [ -n "$KRX_ID" ] && [ -n "$KRX_PW" ]; }; then
+            python krx_money_flow.py --site-dir site || echo "KRX refresh failed; publishing committed site/data/latest.json."
           else
             echo "No KRX credentials configured; publishing committed site/data/latest.json."
           fi
