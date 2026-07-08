@@ -43,11 +43,26 @@
       color: var(--muted);
       font-size: 14px;
     }
-    .meta span {
+    .meta span,
+    .range-control {
       border: 1px solid var(--line);
       background: var(--panel);
       padding: 6px 10px;
       border-radius: 6px;
+    }
+    .range-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .range-control select {
+      min-height: 24px;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 650;
+      outline: 0;
     }
     main {
       width: min(1220px, calc(100% - 32px));
@@ -93,7 +108,49 @@
     .kpi .label { color: var(--muted); font-size: 13px; }
     .kpi .value { margin-top: 8px; font-size: clamp(24px, 3vw, 34px); font-weight: 750; }
     .kpi .state { margin-top: 8px; color: var(--muted); font-size: 13px; }
-    .chart-wrap { padding: 18px; }
+    .chart-wrap {
+      padding: 18px;
+      position: relative;
+    }
+    .chart-tooltip {
+      position: absolute;
+      z-index: 3;
+      min-width: 168px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 10px 24px rgba(23, 32, 28, 0.12);
+      color: var(--ink);
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.55;
+      pointer-events: none;
+      transform: translate(-50%, calc(-100% - 12px));
+    }
+    .chart-tooltip[hidden] { display: none; }
+    .chart-tooltip .date {
+      margin-bottom: 4px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .chart-tooltip .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .chart-tooltip .name {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+    }
+    .chart-tooltip .swatch {
+      width: 14px;
+      height: 3px;
+      border-radius: 99px;
+      background: var(--ink);
+    }
     canvas {
       display: block;
       width: 100%;
@@ -124,6 +181,11 @@
     .table-wrap {
       overflow: auto;
       padding: 18px;
+    }
+    .empty {
+      padding: 18px;
+      color: var(--muted);
+      font-size: 14px;
     }
     table {
       width: 100%;
@@ -160,6 +222,12 @@
       canvas { height: 330px; }
       .section-head { align-items: flex-start; flex-direction: column; }
       .hint { white-space: normal; }
+      .tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 2px;
+      }
+      button { flex: 0 0 auto; }
     }
   </style>
 </head>
@@ -180,15 +248,18 @@
     <section>
       <div class="section-head">
         <h2>累计资金流</h2>
-        <div class="hint">外资、机构、散户累计净买卖金额</div>
+        <div class="hint" id="chartHint">外资、机构、散户累计净买卖金额</div>
       </div>
-      <div class="chart-wrap"><canvas id="flowChart"></canvas></div>
+      <div class="chart-wrap">
+        <canvas id="flowChart"></canvas>
+        <div class="chart-tooltip" id="chartTooltip" hidden></div>
+      </div>
     </section>
 
     <section>
       <div class="section-head">
         <h2>最近明细</h2>
-        <div class="hint">市场与个股数据按日期倒序</div>
+        <div class="hint" id="tableHint">市场与个股数据按日期倒序</div>
       </div>
       <div class="tabs" id="tabs"></div>
       <div class="table-wrap" id="tableWrap"><div class="status">加载中</div></div>
@@ -198,13 +269,76 @@
   <script>
     const investors = ["外资", "机构", "散户"];
     const colors = {"外资": "#0f766e", "机构": "#b45309", "散户": "#2563eb"};
+    const periodOptions = [
+      {value: "365d", label: "365d", days: 365},
+      {value: "90d", label: "90d", days: 90},
+      {value: "30d", label: "30d", days: 30},
+      {value: "7d", label: "7d", days: 7}
+    ];
     let data = null;
+    let selectedPeriod = "90d";
+    let activeTabIndex = 0;
+    let chartHoverIndex = null;
 
     function formatNumber(value, digits = 0) {
       return Number(value || 0).toLocaleString("zh-CN", {
         maximumFractionDigits: digits,
         minimumFractionDigits: digits
       });
+    }
+
+    function formatDate(value) {
+      const text = String(value || "");
+      const compact = text.match(/^(\d{4})(\d{2})(\d{2})$/);
+      if (compact) return `${compact[1]}-${compact[2]}-${compact[3]}`;
+      return text || "-";
+    }
+
+    function parseDate(value) {
+      const normalized = formatDate(value);
+      const date = new Date(`${normalized}T00:00:00`);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function periodStartDate(endDate) {
+      const option = periodOptions.find(item => item.value === selectedPeriod) || periodOptions[1];
+      const start = new Date(endDate);
+      if (option.days) start.setDate(start.getDate() - option.days + 1);
+      return start;
+    }
+
+    function getDateRange() {
+      const datedRows = (data?.marketFlow || []).filter(row => parseDate(row["日期"]));
+      const latest = parseDate(data?.meta?.latestDate) || parseDate(datedRows[datedRows.length - 1]?.["日期"]);
+      if (!latest) return {start: null, end: null};
+      return {start: periodStartDate(latest), end: latest};
+    }
+
+    function filterRowsByPeriod(rows) {
+      const {start, end} = getDateRange();
+      if (!start || !end) return rows || [];
+      return (rows || []).filter(row => {
+        const rowDate = parseDate(row["日期"]);
+        return rowDate && rowDate >= start && rowDate <= end;
+      });
+    }
+
+    function filteredMarketFlow() {
+      const totals = {"外资": 0, "机构": 0, "散户": 0};
+      return filterRowsByPeriod(data?.marketFlow || []).map(row => {
+        const next = {...row};
+        investors.forEach(name => {
+          totals[name] += Number(row[name] || 0);
+          next[`${name}累计`] = totals[name];
+        });
+        return next;
+      });
+    }
+
+    function activeRangeLabel() {
+      const rows = filteredMarketFlow();
+      if (!rows.length) return "暂无区间数据";
+      return `${formatDate(rows[0]["日期"])} - ${formatDate(rows[rows.length - 1]["日期"])}`;
     }
 
     function className(value) {
@@ -219,18 +353,31 @@
       const market = meta.market || "KRX";
       document.title = `FlowRadar - ${market} 资金流`;
       document.getElementById("title").textContent = `FlowRadar`;
-      document.getElementById("meta").innerHTML = [
-        `${market} 资金流`,
-        `区间 ${meta.start || "-"} - ${meta.end || "-"}`,
-        `最新交易日 ${meta.latestDate || "-"}`,
-        `生成时间 ${meta.generatedAt || "-"}`
-      ].map(item => `<span>${item}</span>`).join("");
+      document.getElementById("meta").innerHTML = `
+        <span>${market} 资金流</span>
+        <label class="range-control" for="periodSelect">
+          区间
+          <select id="periodSelect" aria-label="选择数据区间">
+            ${periodOptions.map(option => `<option value="${option.value}" ${option.value === selectedPeriod ? "selected" : ""}>${option.label}</option>`).join("")}
+          </select>
+        </label>
+        <span>最新交易日 ${formatDate(meta.latestDate)}</span>
+      `;
+      document.getElementById("periodSelect").addEventListener("change", event => {
+        selectedPeriod = event.target.value;
+        activeTabIndex = 0;
+        renderPeriodViews();
+      });
     }
 
     function renderKpis() {
       const host = document.getElementById("kpis");
       const marketName = `${data.meta?.market || "KOSPI"}市场`;
-      const rows = data.summary.filter(row => row["对象"] === marketName || row["对象"] === "KOSPI市场");
+      const rows = (data.summary || []).filter(row => row["对象"] === marketName || row["对象"] === "KOSPI市场");
+      if (!rows.length) {
+        host.innerHTML = `<div class="empty">暂无市场资金方向数据</div>`;
+        return;
+      }
       host.innerHTML = rows.map(row => `
         <div class="kpi">
           <div class="label">${row["指标"]}</div>
@@ -250,21 +397,32 @@
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       const width = rect.width;
       const height = rect.height;
-      const pad = {left: 58, right: 18, top: 24, bottom: 44};
-      const points = data?.marketFlow || [];
+      const points = filteredMarketFlow();
       ctx.clearRect(0, 0, width, height);
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, width, height);
-      if (!points.length) return;
+      if (!points.length) {
+        canvas._chartState = null;
+        return;
+      }
 
       const values = points.flatMap(row => investors.map(name => Number(row[`${name}累计`] || 0)));
       let min = Math.min(...values, 0);
       let max = Math.max(...values, 0);
       if (min === max) { min -= 1; max += 1; }
+      ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      const yLabels = Array.from({length: 5}, (_, index) => formatNumber(max - index / 4 * (max - min), 0));
+      const leftPad = Math.max(58, Math.ceil(Math.max(...yLabels.map(label => ctx.measureText(label).width))) + 14);
+      const pad = {left: Math.min(leftPad, Math.max(58, width * 0.32)), right: 18, top: 24, bottom: 74};
       const plotW = width - pad.left - pad.right;
       const plotH = height - pad.top - pad.bottom;
       const x = index => pad.left + (points.length === 1 ? plotW / 2 : (index / (points.length - 1)) * plotW);
       const y = value => pad.top + (max - value) / (max - min) * plotH;
+      const xTickCount = Math.min(4, points.length);
+      const xTickIndexes = Array.from({length: xTickCount}, (_, tick) => {
+        if (xTickCount === 1) return 0;
+        return Math.round(tick * (points.length - 1) / (xTickCount - 1));
+      }).filter((index, position, list) => list.indexOf(index) === position);
 
       ctx.strokeStyle = "#dfe6df";
       ctx.lineWidth = 1;
@@ -276,13 +434,20 @@
       }
       ctx.stroke();
 
+      ctx.strokeStyle = "#edf2ed";
+      ctx.beginPath();
+      xTickIndexes.forEach(index => {
+        const tx = x(index);
+        ctx.moveTo(tx, pad.top);
+        ctx.lineTo(tx, pad.top + plotH);
+      });
+      ctx.stroke();
+
       ctx.fillStyle = "#62706a";
-      ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
       for (let i = 0; i <= 4; i++) {
-        const value = max - i / 4 * (max - min);
-        ctx.fillText(formatNumber(value, 0), pad.left - 8, pad.top + i / 4 * plotH);
+        ctx.fillText(yLabels[i], pad.left - 8, pad.top + i / 4 * plotH);
       }
 
       const zeroY = y(0);
@@ -305,6 +470,53 @@
         ctx.stroke();
       });
 
+      if (chartHoverIndex !== null && points[chartHoverIndex]) {
+        const hoverX = x(chartHoverIndex);
+        ctx.strokeStyle = "#7b8a84";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(hoverX, pad.top);
+        ctx.lineTo(hoverX, pad.top + plotH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        investors.forEach(name => {
+          const hoverY = y(Number(points[chartHoverIndex][`${name}累计`] || 0));
+          ctx.fillStyle = "#ffffff";
+          ctx.strokeStyle = colors[name];
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(hoverX, hoverY, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+      }
+
+      const axisY = pad.top + plotH;
+      const dateY = height - 44;
+      ctx.strokeStyle = "#b7c2bd";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, axisY);
+      ctx.lineTo(width - pad.right, axisY);
+      xTickIndexes.forEach(index => {
+        const tx = x(index);
+        ctx.moveTo(tx, axisY);
+        ctx.lineTo(tx, axisY + 5);
+      });
+      ctx.stroke();
+
+      ctx.fillStyle = "#62706a";
+      ctx.textBaseline = "alphabetic";
+      xTickIndexes.forEach((pointIndex, tickIndex) => {
+        const tx = x(pointIndex);
+        if (tickIndex === 0) ctx.textAlign = "left";
+        else if (tickIndex === xTickIndexes.length - 1) ctx.textAlign = "right";
+        else ctx.textAlign = "center";
+        ctx.fillText(points[pointIndex]["日期"], tx, dateY);
+      });
+
       ctx.textAlign = "left";
       ctx.textBaseline = "alphabetic";
       investors.forEach((name, index) => {
@@ -316,16 +528,84 @@
         ctx.fillText(name, lx + 25, ly - 5);
       });
 
-      ctx.fillStyle = "#62706a";
-      ctx.textAlign = "left";
-      ctx.fillText(points[0]["日期"], pad.left, height - 26);
-      ctx.textAlign = "right";
-      ctx.fillText(points[points.length - 1]["日期"], width - pad.right, height - 26);
+      canvas._chartState = {points, pad, plotW, plotH};
+    }
+
+    function showChartTooltip(index, mouseX, mouseY) {
+      const tooltip = document.getElementById("chartTooltip");
+      const canvas = document.getElementById("flowChart");
+      const state = canvas._chartState;
+      const point = state?.points?.[index];
+      if (!point) {
+        hideChartTooltip();
+        return;
+      }
+
+      tooltip.innerHTML = `
+        <div class="date">${point["日期"]}</div>
+        ${investors.map(name => `
+          <div class="row">
+            <span class="name"><span class="swatch" style="background:${colors[name]}"></span>${name}</span>
+            <strong class="${className(point[`${name}累计`])}">${formatNumber(point[`${name}累计`], 2)}</strong>
+          </div>
+        `).join("")}
+      `;
+      tooltip.hidden = false;
+
+      const wrap = canvas.parentElement;
+      const tooltipWidth = tooltip.offsetWidth;
+      const tooltipHeight = tooltip.offsetHeight;
+      const x = Math.min(Math.max(mouseX, tooltipWidth / 2 + 8), wrap.clientWidth - tooltipWidth / 2 - 8);
+      const y = Math.max(mouseY, tooltipHeight + 18);
+      tooltip.style.left = `${x}px`;
+      tooltip.style.top = `${y}px`;
+    }
+
+    function hideChartTooltip() {
+      const tooltip = document.getElementById("chartTooltip");
+      chartHoverIndex = null;
+      if (tooltip) tooltip.hidden = true;
+      if (data) drawChart();
+    }
+
+    function bindChartTooltip() {
+      const canvas = document.getElementById("flowChart");
+      canvas.addEventListener("mousemove", event => {
+        const state = canvas._chartState;
+        if (!state?.points?.length) return;
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+        const {points, pad, plotW, plotH} = state;
+        if (
+          mouseX < pad.left ||
+          mouseX > pad.left + plotW ||
+          mouseY < pad.top ||
+          mouseY > pad.top + plotH
+        ) {
+          hideChartTooltip();
+          return;
+        }
+        const index = Math.round((mouseX - pad.left) / plotW * (points.length - 1));
+        const boundedIndex = Math.min(Math.max(index, 0), points.length - 1);
+        if (boundedIndex !== chartHoverIndex) {
+          chartHoverIndex = boundedIndex;
+          drawChart();
+        }
+        showChartTooltip(boundedIndex, mouseX, mouseY);
+      });
+      canvas.addEventListener("mouseleave", hideChartTooltip);
     }
 
     function tableFor(label, rows) {
-      const recent = [...rows].reverse().slice(0, 30);
-      const columns = Object.keys(recent[0] || {});
+      const recent = [...(rows || [])].reverse().slice(0, 30);
+      const columns = Object.keys(recent[0] || {}).filter(column => (
+        column !== "其他法人" && !column.endsWith("累计")
+      ));
+      if (!columns.length) {
+        document.getElementById("tableWrap").innerHTML = `<div class="empty">暂无明细数据</div>`;
+        return;
+      }
       document.getElementById("tableWrap").innerHTML = `
         <table>
           <thead><tr>${columns.map(col => `<th>${col}</th>`).join("")}</tr></thead>
@@ -333,8 +613,8 @@
             ${recent.map(row => `<tr>${columns.map(col => {
               const value = row[col];
               const numeric = typeof value === "number";
-              const digits = col.includes("累计") || label.includes("市场") ? 2 : 0;
-              return `<td class="${numeric ? className(value) : ""}">${numeric ? formatNumber(value, digits) : value}</td>`;
+              const tableValue = numeric && !label.includes("市场") ? value / 100000000 : value;
+              return `<td class="${numeric ? className(tableValue) : ""}">${numeric ? formatNumber(tableValue, 2) : value}</td>`;
             }).join("")}</tr>`).join("")}
           </tbody>
         </table>
@@ -346,22 +626,39 @@
         {label: "市场资金", rows: data.marketFlow},
         ...Object.entries(data.stockFlows || {}).flatMap(([ticker, frames]) => {
           const stockTabs = [];
-          if (frames.shares?.length) stockTabs.push({label: `${ticker} 股数`, rows: frames.shares});
-          if (frames.value?.length) stockTabs.push({label: `${ticker} 金额`, rows: frames.value});
+          if (frames.value?.length) stockTabs.push({label: ticker, rows: frames.value});
           return stockTabs;
         })
       ].filter(tab => tab.rows?.length);
       const host = document.getElementById("tabs");
-      host.innerHTML = tabs.map((tab, index) => `<button type="button" data-index="${index}" class="${index === 0 ? "active" : ""}">${tab.label}</button>`).join("");
-      host.addEventListener("click", event => {
+      if (!tabs.length) {
+        host.innerHTML = "";
+        tableFor("", []);
+        return;
+      }
+      if (activeTabIndex >= tabs.length) activeTabIndex = 0;
+      host.innerHTML = tabs.map((tab, index) => `<button type="button" data-index="${index}" class="${index === activeTabIndex ? "active" : ""}">${tab.label}</button>`).join("");
+      host.onclick = event => {
         const button = event.target.closest("button");
         if (!button) return;
         host.querySelectorAll("button").forEach(item => item.classList.remove("active"));
         button.classList.add("active");
-        const tab = tabs[Number(button.dataset.index)];
+        activeTabIndex = Number(button.dataset.index);
+        const tab = tabs[activeTabIndex];
         tableFor(tab.label, tab.rows);
-      });
-      if (tabs.length) tableFor(tabs[0].label, tabs[0].rows);
+      };
+      tableFor(tabs[activeTabIndex].label, tabs[activeTabIndex].rows);
+    }
+
+    function renderPeriodViews() {
+      chartHoverIndex = null;
+      const tooltip = document.getElementById("chartTooltip");
+      if (tooltip) tooltip.hidden = true;
+      const rangeLabel = activeRangeLabel();
+      document.getElementById("chartHint").textContent = `外资、机构、散户累计净买卖金额：${rangeLabel}`;
+      document.getElementById("tableHint").textContent = "近30个交易日数据按日期倒序，单位：亿韩元";
+      drawChart();
+      renderTabs();
     }
 
     async function boot() {
@@ -371,8 +668,8 @@
         data = await response.json();
         renderMeta();
         renderKpis();
-        drawChart();
-        renderTabs();
+        bindChartTooltip();
+        renderPeriodViews();
       } catch (error) {
         document.getElementById("kpis").innerHTML = `<div class="status">数据暂不可用</div>`;
         document.getElementById("tableWrap").innerHTML = `<div class="status">数据暂不可用</div>`;
