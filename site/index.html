@@ -29,6 +29,12 @@
       border-bottom: 1px solid var(--line);
       background: #fbfcf9;
     }
+    .header-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
     h1 {
       margin: 0;
       font-size: clamp(26px, 4vw, 42px);
@@ -50,12 +56,21 @@
       padding: 6px 10px;
       border-radius: 6px;
     }
-    .range-control {
+    .language-control {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 4px 6px;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .range-control,
+    .language-control {
       display: inline-flex;
       align-items: center;
       gap: 8px;
     }
-    .range-control select {
+    .range-control select,
+    .language-control select {
       min-height: 24px;
       border: 0;
       background: transparent;
@@ -63,6 +78,11 @@
       font: inherit;
       font-weight: 650;
       outline: 0;
+    }
+    .language-control select {
+      min-height: 20px;
+      min-width: 74px;
+      font-size: 12px;
     }
     main {
       width: min(1220px, calc(100% - 32px));
@@ -218,6 +238,7 @@
       font-size: 14px;
     }
     @media (max-width: 760px) {
+      .header-top { align-items: center; }
       .kpis { grid-template-columns: 1fr; }
       canvas { height: 330px; }
       .section-head { align-items: flex-start; flex-direction: column; }
@@ -233,21 +254,24 @@
 </head>
 <body>
   <header>
-    <h1 id="title">FlowRadar</h1>
+    <div class="header-top">
+      <h1 id="title">FlowRadar</h1>
+      <div id="languageHost"></div>
+    </div>
     <div class="meta" id="meta"></div>
   </header>
   <main>
     <section>
       <div class="section-head">
-        <h2>市场资金方向</h2>
-        <div class="hint">单位：亿韩元，正数为净买入</div>
+        <h2 id="kpiTitle">市场资金方向</h2>
+        <div class="hint" id="kpiHint">单位：亿韩元，正数为净买入</div>
       </div>
-      <div class="kpis" id="kpis"><div class="status">加载中</div></div>
+      <div class="kpis" id="kpis"><div class="status" id="kpiStatus">加载中</div></div>
     </section>
 
     <section>
       <div class="section-head">
-        <h2>累计资金流</h2>
+        <h2 id="chartTitle">累计资金流</h2>
         <div class="hint" id="chartHint">外资、机构、散户累计净买卖金额</div>
       </div>
       <div class="chart-wrap">
@@ -258,17 +282,181 @@
 
     <section>
       <div class="section-head">
-        <h2>最近明细</h2>
+        <h2 id="detailTitle">最近明细</h2>
         <div class="hint" id="tableHint">市场与个股数据按日期倒序</div>
       </div>
       <div class="tabs" id="tabs"></div>
-      <div class="table-wrap" id="tableWrap"><div class="status">加载中</div></div>
+      <div class="table-wrap" id="tableWrap"><div class="status" id="tableStatus">加载中</div></div>
     </section>
   </main>
 
   <script>
     const investors = ["外资", "机构", "散户"];
     const colors = {"外资": "#0f766e", "机构": "#b45309", "散户": "#2563eb"};
+    const languageOptions = [
+      {value: "en", label: "English"},
+      {value: "ko", label: "한국어"},
+      {value: "ja", label: "日本語"},
+      {value: "zh-Hant", label: "繁體中文"},
+      {value: "zh-CN", label: "简体中文"}
+    ];
+    const i18n = {
+      "zh-CN": {
+        htmlLang: "zh-CN",
+        locale: "zh-CN",
+        language: "语言",
+        marketFlow: "市场资金方向",
+        kpiHint: "单位：亿韩元，正数为净买入",
+        cumulativeFlow: "累计资金流",
+        chartHintBase: "外资、机构、散户累计净买卖金额",
+        recentDetails: "最近明细",
+        tableHint: "近30个交易日数据按日期倒序，单位：亿韩元",
+        loading: "加载中",
+        dataUnavailable: "数据暂不可用",
+        emptyRange: "暂无区间数据",
+        emptyMarket: "暂无市场资金方向数据",
+        emptyDetails: "暂无明细数据",
+        range: "区间",
+        rangeAria: "选择数据区间",
+        latestTradingDay: "最新交易日",
+        marketFunds: "市场资金",
+        marketSuffix: "市场",
+        titleSuffix: "资金流",
+        unitEokKrw: "亿韩元",
+        netBuy: "净买入",
+        netSell: "净卖出",
+        consecutive: "连续",
+        days: "天",
+        columns: {"日期": "日期", "机构": "机构", "散户": "散户", "外资": "外资", "合计": "合计"},
+        investors: {"外资": "外资", "机构": "机构", "散户": "散户"},
+        metrics: {"外资净买卖金额": "外资净买卖金额", "机构净买卖金额": "机构净买卖金额", "散户净买卖金额": "散户净买卖金额"},
+        stocks: {"005930_三星电子": "005930_三星电子", "000660_SK海力士": "000660_SK海力士"}
+      },
+      "zh-Hant": {
+        htmlLang: "zh-Hant",
+        locale: "zh-Hant",
+        language: "語言",
+        marketFlow: "市場資金方向",
+        kpiHint: "單位：億韓元，正數為淨買入",
+        cumulativeFlow: "累計資金流",
+        chartHintBase: "外資、機構、散戶累計淨買賣金額",
+        recentDetails: "最近明細",
+        tableHint: "近30個交易日資料按日期倒序，單位：億韓元",
+        loading: "載入中",
+        dataUnavailable: "資料暫不可用",
+        emptyRange: "暫無區間資料",
+        emptyMarket: "暫無市場資金方向資料",
+        emptyDetails: "暫無明細資料",
+        range: "區間",
+        rangeAria: "選擇資料區間",
+        latestTradingDay: "最新交易日",
+        marketFunds: "市場資金",
+        marketSuffix: "市場",
+        titleSuffix: "資金流",
+        unitEokKrw: "億韓元",
+        netBuy: "淨買入",
+        netSell: "淨賣出",
+        consecutive: "連續",
+        days: "天",
+        columns: {"日期": "日期", "机构": "機構", "散户": "散戶", "外资": "外資", "合计": "合計"},
+        investors: {"外资": "外資", "机构": "機構", "散户": "散戶"},
+        metrics: {"外资净买卖金额": "外資淨買賣金額", "机构净买卖金额": "機構淨買賣金額", "散户净买卖金额": "散戶淨買賣金額"},
+        stocks: {"005930_三星电子": "005930_三星電子", "000660_SK海力士": "000660_SK海力士"}
+      },
+      en: {
+        htmlLang: "en",
+        locale: "en-US",
+        language: "Language",
+        marketFlow: "Market Money Flow",
+        kpiHint: "Unit: 100M KRW. Positive values are net buying",
+        cumulativeFlow: "Cumulative Flow",
+        chartHintBase: "Cumulative net buy/sell amount by foreign, institutional, and retail investors",
+        recentDetails: "Recent Details",
+        tableHint: "Latest 30 trading days, newest first. Unit: 100M KRW",
+        loading: "Loading",
+        dataUnavailable: "Data unavailable",
+        emptyRange: "No data in this range",
+        emptyMarket: "No market money-flow data",
+        emptyDetails: "No detail data",
+        range: "Range",
+        rangeAria: "Select data range",
+        latestTradingDay: "Latest trading day",
+        marketFunds: "Market Funds",
+        marketSuffix: "Market",
+        titleSuffix: "Money Flow",
+        unitEokKrw: "100M KRW",
+        netBuy: "net buying",
+        netSell: "net selling",
+        consecutive: "",
+        days: "days",
+        columns: {"日期": "Date", "机构": "Institutional", "散户": "Retail", "外资": "Foreign", "合计": "Total"},
+        investors: {"外资": "Foreign", "机构": "Institutional", "散户": "Retail"},
+        metrics: {"外资净买卖金额": "Foreign Net Buy/Sell Amount", "机构净买卖金额": "Institutional Net Buy/Sell Amount", "散户净买卖金额": "Retail Net Buy/Sell Amount"},
+        stocks: {"005930_三星电子": "005930_Samsung Electronics", "000660_SK海力士": "000660_SK Hynix"}
+      },
+      ko: {
+        htmlLang: "ko",
+        locale: "ko-KR",
+        language: "언어",
+        marketFlow: "시장 수급 방향",
+        kpiHint: "단위: 억 원, 양수는 순매수",
+        cumulativeFlow: "누적 자금 흐름",
+        chartHintBase: "외국인, 기관, 개인 누적 순매수 금액",
+        recentDetails: "최근 상세",
+        tableHint: "최근 30거래일, 최신순. 단위: 억 원",
+        loading: "불러오는 중",
+        dataUnavailable: "데이터를 사용할 수 없습니다",
+        emptyRange: "해당 구간 데이터가 없습니다",
+        emptyMarket: "시장 수급 데이터가 없습니다",
+        emptyDetails: "상세 데이터가 없습니다",
+        range: "구간",
+        rangeAria: "데이터 구간 선택",
+        latestTradingDay: "최근 거래일",
+        marketFunds: "시장 수급",
+        marketSuffix: "시장",
+        titleSuffix: "자금 흐름",
+        unitEokKrw: "억 원",
+        netBuy: "순매수",
+        netSell: "순매도",
+        consecutive: "연속",
+        days: "일",
+        columns: {"日期": "일자", "机构": "기관", "散户": "개인", "外资": "외국인", "合计": "합계"},
+        investors: {"外资": "외국인", "机构": "기관", "散户": "개인"},
+        metrics: {"外资净买卖金额": "외국인 순매수 금액", "机构净买卖金额": "기관 순매수 금액", "散户净买卖金额": "개인 순매수 금액"},
+        stocks: {"005930_三星电子": "005930_삼성전자", "000660_SK海力士": "000660_SK하이닉스"}
+      },
+      ja: {
+        htmlLang: "ja",
+        locale: "ja-JP",
+        language: "言語",
+        marketFlow: "市場資金動向",
+        kpiHint: "単位：億ウォン、プラスは買い越し",
+        cumulativeFlow: "累積資金フロー",
+        chartHintBase: "外国人、機関、個人の累積売買代金",
+        recentDetails: "直近明細",
+        tableHint: "直近30取引日を日付降順で表示。単位：億ウォン",
+        loading: "読み込み中",
+        dataUnavailable: "データを利用できません",
+        emptyRange: "この期間のデータはありません",
+        emptyMarket: "市場資金動向データはありません",
+        emptyDetails: "明細データはありません",
+        range: "期間",
+        rangeAria: "データ期間を選択",
+        latestTradingDay: "最新取引日",
+        marketFunds: "市場資金",
+        marketSuffix: "市場",
+        titleSuffix: "資金フロー",
+        unitEokKrw: "億ウォン",
+        netBuy: "買い越し",
+        netSell: "売り越し",
+        consecutive: "連続",
+        days: "日",
+        columns: {"日期": "日付", "机构": "機関", "散户": "個人", "外资": "外国人", "合计": "合計"},
+        investors: {"外资": "外国人", "机构": "機関", "散户": "個人"},
+        metrics: {"外资净买卖金额": "外国人 売買代金", "机构净买卖金额": "機関 売買代金", "散户净买卖金额": "個人 売買代金"},
+        stocks: {"005930_三星电子": "005930_サムスン電子", "000660_SK海力士": "000660_SKハイニックス"}
+      }
+    };
     const periodOptions = [
       {value: "365d", label: "365d", days: 365},
       {value: "90d", label: "90d", days: 90},
@@ -277,11 +465,56 @@
     ];
     let data = null;
     let selectedPeriod = "90d";
+    let currentLanguage = localStorage.getItem("flowradar-language") || "zh-CN";
     let activeTabIndex = 0;
     let chartHoverIndex = null;
 
+    function text(key) {
+      return (i18n[currentLanguage] || i18n["zh-CN"])[key];
+    }
+
+    function locale() {
+      return text("locale") || "zh-CN";
+    }
+
+    function setDocumentLanguage() {
+      document.documentElement.lang = text("htmlLang") || currentLanguage;
+    }
+
+    function investorLabel(name) {
+      return text("investors")?.[name] || name;
+    }
+
+    function columnLabel(column) {
+      return text("columns")?.[column] || column;
+    }
+
+    function metricLabel(metric) {
+      return text("metrics")?.[metric] || metric;
+    }
+
+    function stockLabel(label) {
+      return text("stocks")?.[label] || label;
+    }
+
+    function marketLabel(market) {
+      return `${market} ${text("marketSuffix")}`;
+    }
+
+    function statusLabel(status) {
+      const match = String(status || "").match(/^连续(净买入|净卖出)\s+(\d+)\s+天$/);
+      if (!match) return status || "";
+      const action = match[1] === "净买入" ? text("netBuy") : text("netSell");
+      const count = match[2];
+      if (currentLanguage === "en") return `${action} for ${count} ${text("days")}`;
+      if (currentLanguage === "ko") return `${text("consecutive")} ${action} ${count}${text("days")}`;
+      if (currentLanguage === "ja") return `${text("consecutive")}${action} ${count}${text("days")}`;
+      if (currentLanguage === "zh-Hant") return `${text("consecutive")}${action} ${count}${text("days")}`;
+      return `${text("consecutive")}${action} ${count} ${text("days")}`;
+    }
+
     function formatNumber(value, digits = 0) {
-      return Number(value || 0).toLocaleString("zh-CN", {
+      return Number(value || 0).toLocaleString(locale(), {
         maximumFractionDigits: digits,
         minimumFractionDigits: digits
       });
@@ -337,7 +570,7 @@
 
     function activeRangeLabel() {
       const rows = filteredMarketFlow();
-      if (!rows.length) return "暂无区间数据";
+      if (!rows.length) return text("emptyRange");
       return `${formatDate(rows[0]["日期"])} - ${formatDate(rows[rows.length - 1]["日期"])}`;
     }
 
@@ -349,19 +582,20 @@
     }
 
     function renderMeta() {
+      setDocumentLanguage();
       const meta = data.meta || {};
       const market = meta.market || "KRX";
-      document.title = `FlowRadar - ${market} 资金流`;
+      document.title = `FlowRadar - ${market} ${text("titleSuffix")}`;
       document.getElementById("title").textContent = `FlowRadar`;
       document.getElementById("meta").innerHTML = `
-        <span>${market} 资金流</span>
+        <span>${marketLabel(market)}</span>
         <label class="range-control" for="periodSelect">
-          区间
-          <select id="periodSelect" aria-label="选择数据区间">
+          ${text("range")}
+          <select id="periodSelect" aria-label="${text("rangeAria")}">
             ${periodOptions.map(option => `<option value="${option.value}" ${option.value === selectedPeriod ? "selected" : ""}>${option.label}</option>`).join("")}
           </select>
         </label>
-        <span>最新交易日 ${formatDate(meta.latestDate)}</span>
+        <span>${text("latestTradingDay")} ${formatDate(meta.latestDate)}</span>
       `;
       document.getElementById("periodSelect").addEventListener("change", event => {
         selectedPeriod = event.target.value;
@@ -370,19 +604,35 @@
       });
     }
 
+    function renderLanguageControl() {
+      document.getElementById("languageHost").innerHTML = `
+        <label class="language-control" for="languageSelect">
+          <select id="languageSelect" aria-label="${text("language")}">
+            ${languageOptions.map(option => `<option value="${option.value}" ${option.value === currentLanguage ? "selected" : ""}>${option.label}</option>`).join("")}
+          </select>
+        </label>
+      `;
+      document.getElementById("languageSelect").addEventListener("change", event => {
+        currentLanguage = event.target.value;
+        localStorage.setItem("flowradar-language", currentLanguage);
+        if (data) renderAll();
+        else renderStaticText();
+      });
+    }
+
     function renderKpis() {
       const host = document.getElementById("kpis");
       const marketName = `${data.meta?.market || "KOSPI"}市场`;
       const rows = (data.summary || []).filter(row => row["对象"] === marketName || row["对象"] === "KOSPI市场");
       if (!rows.length) {
-        host.innerHTML = `<div class="empty">暂无市场资金方向数据</div>`;
+        host.innerHTML = `<div class="empty">${text("emptyMarket")}</div>`;
         return;
       }
       host.innerHTML = rows.map(row => `
         <div class="kpi">
-          <div class="label">${row["指标"]}</div>
+          <div class="label">${metricLabel(row["指标"])}</div>
           <div class="value ${className(row["最近值"])}">${formatNumber(row["最近值"], 2)}</div>
-          <div class="state">${row["连续状态"]}</div>
+          <div class="state">${statusLabel(row["连续状态"])}</div>
         </div>
       `).join("");
     }
@@ -525,7 +775,7 @@
         ctx.fillStyle = colors[name];
         ctx.fillRect(lx, ly - 10, 18, 3);
         ctx.fillStyle = "#35433e";
-        ctx.fillText(name, lx + 25, ly - 5);
+        ctx.fillText(investorLabel(name), lx + 25, ly - 5);
       });
 
       canvas._chartState = {points, pad, plotW, plotH};
@@ -545,7 +795,7 @@
         <div class="date">${point["日期"]}</div>
         ${investors.map(name => `
           <div class="row">
-            <span class="name"><span class="swatch" style="background:${colors[name]}"></span>${name}</span>
+            <span class="name"><span class="swatch" style="background:${colors[name]}"></span>${investorLabel(name)}</span>
             <strong class="${className(point[`${name}累计`])}">${formatNumber(point[`${name}累计`], 2)}</strong>
           </div>
         `).join("")}
@@ -597,23 +847,26 @@
       canvas.addEventListener("mouseleave", hideChartTooltip);
     }
 
-    function tableFor(label, rows) {
+    function tableFor(tab) {
+      const label = tab?.label || "";
+      const rows = tab?.rows || [];
+      const isMarket = Boolean(tab?.isMarket);
       const recent = [...(rows || [])].reverse().slice(0, 30);
       const columns = Object.keys(recent[0] || {}).filter(column => (
         column !== "其他法人" && !column.endsWith("累计")
       ));
       if (!columns.length) {
-        document.getElementById("tableWrap").innerHTML = `<div class="empty">暂无明细数据</div>`;
+        document.getElementById("tableWrap").innerHTML = `<div class="empty">${text("emptyDetails")}</div>`;
         return;
       }
       document.getElementById("tableWrap").innerHTML = `
         <table>
-          <thead><tr>${columns.map(col => `<th>${col}</th>`).join("")}</tr></thead>
+          <thead><tr>${columns.map(col => `<th>${columnLabel(col)}</th>`).join("")}</tr></thead>
           <tbody>
             ${recent.map(row => `<tr>${columns.map(col => {
               const value = row[col];
               const numeric = typeof value === "number";
-              const tableValue = numeric && !label.includes("市场") ? value / 100000000 : value;
+              const tableValue = numeric && !isMarket ? value / 100000000 : value;
               return `<td class="${numeric ? className(tableValue) : ""}">${numeric ? formatNumber(tableValue, 2) : value}</td>`;
             }).join("")}</tr>`).join("")}
           </tbody>
@@ -623,17 +876,17 @@
 
     function renderTabs() {
       const tabs = [
-        {label: "市场资金", rows: data.marketFlow},
+        {label: text("marketFunds"), rows: data.marketFlow, isMarket: true},
         ...Object.entries(data.stockFlows || {}).flatMap(([ticker, frames]) => {
           const stockTabs = [];
-          if (frames.value?.length) stockTabs.push({label: ticker, rows: frames.value});
+          if (frames.value?.length) stockTabs.push({label: stockLabel(ticker), rows: frames.value, isMarket: false});
           return stockTabs;
         })
       ].filter(tab => tab.rows?.length);
       const host = document.getElementById("tabs");
       if (!tabs.length) {
         host.innerHTML = "";
-        tableFor("", []);
+        tableFor(null);
         return;
       }
       if (activeTabIndex >= tabs.length) activeTabIndex = 0;
@@ -645,9 +898,22 @@
         button.classList.add("active");
         activeTabIndex = Number(button.dataset.index);
         const tab = tabs[activeTabIndex];
-        tableFor(tab.label, tab.rows);
+        tableFor(tab);
       };
-      tableFor(tabs[activeTabIndex].label, tabs[activeTabIndex].rows);
+      tableFor(tabs[activeTabIndex]);
+    }
+
+    function renderStaticText() {
+      setDocumentLanguage();
+      renderLanguageControl();
+      document.getElementById("kpiTitle").textContent = text("marketFlow");
+      document.getElementById("kpiHint").textContent = text("kpiHint");
+      document.getElementById("chartTitle").textContent = text("cumulativeFlow");
+      document.getElementById("detailTitle").textContent = text("recentDetails");
+      const kpiStatus = document.getElementById("kpiStatus");
+      const tableStatus = document.getElementById("tableStatus");
+      if (kpiStatus) kpiStatus.textContent = text("loading");
+      if (tableStatus) tableStatus.textContent = text("loading");
     }
 
     function renderPeriodViews() {
@@ -655,24 +921,30 @@
       const tooltip = document.getElementById("chartTooltip");
       if (tooltip) tooltip.hidden = true;
       const rangeLabel = activeRangeLabel();
-      document.getElementById("chartHint").textContent = `外资、机构、散户累计净买卖金额：${rangeLabel}`;
-      document.getElementById("tableHint").textContent = "近30个交易日数据按日期倒序，单位：亿韩元";
+      document.getElementById("chartHint").textContent = `${text("chartHintBase")}: ${rangeLabel}`;
+      document.getElementById("tableHint").textContent = text("tableHint");
       drawChart();
       renderTabs();
     }
 
+    function renderAll() {
+      renderStaticText();
+      renderMeta();
+      renderKpis();
+      renderPeriodViews();
+    }
+
     async function boot() {
+      renderStaticText();
       try {
         const response = await fetch("data/latest.json", {cache: "no-store"});
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         data = await response.json();
-        renderMeta();
-        renderKpis();
+        renderAll();
         bindChartTooltip();
-        renderPeriodViews();
       } catch (error) {
-        document.getElementById("kpis").innerHTML = `<div class="status">数据暂不可用</div>`;
-        document.getElementById("tableWrap").innerHTML = `<div class="status">数据暂不可用</div>`;
+        document.getElementById("kpis").innerHTML = `<div class="status">${text("dataUnavailable")}</div>`;
+        document.getElementById("tableWrap").innerHTML = `<div class="status">${text("dataUnavailable")}</div>`;
       }
     }
 
