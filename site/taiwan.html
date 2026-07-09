@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FlowRadar - 台股</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8f5;
+      --panel: #ffffff;
+      --ink: #17201c;
+      --muted: #62706a;
+      --line: #dfe6df;
+      --soft: #eef4f0;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    header {
+      padding: 28px clamp(16px, 4vw, 48px) 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcf9;
+    }
+    .header-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 4vw, 42px);
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+    .market-nav, .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .meta { gap: 10px; color: var(--muted); font-size: 14px; }
+    .market-nav a, .meta span, .language-control {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 6px;
+    }
+    .market-nav a {
+      min-height: 32px;
+      display: inline-flex;
+      align-items: center;
+      color: var(--ink);
+      padding: 6px 11px;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .market-nav a.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .meta span { padding: 6px 10px; }
+    .language-control {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 6px;
+      font-size: 12px;
+    }
+    .language-control select {
+      min-height: 20px;
+      min-width: 74px;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 650;
+      outline: 0;
+    }
+    main {
+      width: min(1220px, calc(100% - 32px));
+      margin: 24px auto 42px;
+      display: grid;
+      gap: 22px;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcf9;
+    }
+    h2 { margin: 0; font-size: 17px; line-height: 1.25; letter-spacing: 0; }
+    .hint, .empty, .status { color: var(--muted); font-size: 14px; }
+    .hint { font-size: 13px; white-space: nowrap; }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      padding: 18px;
+    }
+    .kpi {
+      min-height: 112px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--soft);
+    }
+    .kpi .label { color: var(--muted); font-size: 13px; }
+    .kpi .value { margin-top: 8px; font-size: clamp(24px, 3vw, 34px); font-weight: 750; }
+    .kpi .state { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .status, .empty { padding: 18px; }
+    .table-wrap { overflow: auto; padding: 18px; }
+    table { width: 100%; border-collapse: collapse; min-width: 720px; font-size: 13px; }
+    th, td {
+      padding: 10px 11px;
+      border-bottom: 1px solid var(--line);
+      text-align: right;
+      white-space: nowrap;
+    }
+    th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+    th {
+      background: #fbfcf9;
+      color: #35433e;
+      font-weight: 700;
+      position: sticky;
+      top: 0;
+    }
+    .positive { color: #047857; }
+    .negative { color: #b91c1c; }
+    @media (max-width: 760px) {
+      .header-top { align-items: center; }
+      .market-nav { flex-wrap: nowrap; overflow-x: auto; }
+      .market-nav a { flex: 0 0 auto; }
+      .kpis { grid-template-columns: 1fr; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+      .hint { white-space: normal; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-top">
+      <h1 id="title">FlowRadar</h1>
+      <div id="languageHost"></div>
+    </div>
+    <nav class="market-nav" id="marketNav" aria-label="Markets"></nav>
+    <div class="meta" id="meta"></div>
+  </header>
+  <main>
+    <section>
+      <div class="section-head">
+        <h2 id="kpiTitle">台股资金方向</h2>
+        <div class="hint" id="kpiHint">等待数据源接入</div>
+      </div>
+      <div class="kpis" id="kpis"><div class="status" id="kpiStatus">加载中</div></div>
+    </section>
+
+    <section>
+      <div class="section-head">
+        <h2 id="detailTitle">最近明细</h2>
+        <div class="hint" id="tableHint">按日期倒序</div>
+      </div>
+      <div class="table-wrap" id="tableWrap"><div class="status" id="tableStatus">加载中</div></div>
+    </section>
+  </main>
+
+  <script>
+    const pageConfig = {marketKey: "tw", dataUrl: "data/taiwan/latest.json"};
+    const languageOptions = [
+      {value: "en", label: "English"},
+      {value: "ko", label: "한국어"},
+      {value: "ja", label: "日本語"},
+      {value: "zh-Hant", label: "繁體中文"},
+      {value: "zh-CN", label: "简体中文"}
+    ];
+    const i18n = {
+      "zh-CN": {htmlLang: "zh-CN", locale: "zh-CN", language: "语言", marketNavAria: "市场页面", markets: {kr: "韩股", jp: "日股", tw: "台股"}, titleSuffix: "资金流", marketFlow: "资金方向", recentDetails: "最近明细", tableHint: "按日期倒序", waiting: "等待数据源接入", loading: "加载中", dataUnavailable: "数据暂不可用", latestTradingDay: "最新交易日", generatedAt: "生成时间", emptyDetails: "暂无明细数据"},
+      "zh-Hant": {htmlLang: "zh-Hant", locale: "zh-Hant", language: "語言", marketNavAria: "市場頁面", markets: {kr: "韓股", jp: "日股", tw: "台股"}, titleSuffix: "資金流", marketFlow: "資金方向", recentDetails: "最近明細", tableHint: "按日期倒序", waiting: "等待資料源接入", loading: "載入中", dataUnavailable: "資料暫不可用", latestTradingDay: "最新交易日", generatedAt: "生成時間", emptyDetails: "暫無明細資料"},
+      en: {htmlLang: "en", locale: "en-US", language: "Language", marketNavAria: "Market pages", markets: {kr: "Korea", jp: "Japan", tw: "Taiwan"}, titleSuffix: "Money Flow", marketFlow: "Money Flow", recentDetails: "Recent Details", tableHint: "Newest first", waiting: "Waiting for data source", loading: "Loading", dataUnavailable: "Data unavailable", latestTradingDay: "Latest trading day", generatedAt: "Generated at", emptyDetails: "No detail data"},
+      ko: {htmlLang: "ko", locale: "ko-KR", language: "언어", marketNavAria: "시장 페이지", markets: {kr: "한국", jp: "일본", tw: "대만"}, titleSuffix: "자금 흐름", marketFlow: "자금 방향", recentDetails: "최근 상세", tableHint: "최신순", waiting: "데이터 소스 연결 대기 중", loading: "불러오는 중", dataUnavailable: "데이터를 사용할 수 없습니다", latestTradingDay: "최근 거래일", generatedAt: "생성 시간", emptyDetails: "상세 데이터가 없습니다"},
+      ja: {htmlLang: "ja", locale: "ja-JP", language: "言語", marketNavAria: "市場ページ", markets: {kr: "韓国株", jp: "日本株", tw: "台湾株"}, titleSuffix: "資金フロー", marketFlow: "資金動向", recentDetails: "直近明細", tableHint: "日付降順", waiting: "データソース接続待ち", loading: "読み込み中", dataUnavailable: "データを利用できません", latestTradingDay: "最新取引日", generatedAt: "生成時刻", emptyDetails: "明細データはありません"}
+    };
+    let currentLanguage = localStorage.getItem("flowradar-language") || "zh-CN";
+    let data = null;
+
+    function text(key) { return (i18n[currentLanguage] || i18n["zh-CN"])[key]; }
+    function locale() { return text("locale") || "zh-CN"; }
+    function marketName(key = pageConfig.marketKey) { return text("markets")?.[key] || key; }
+    function formatNumber(value, digits = 2) {
+      return Number(value || 0).toLocaleString(locale(), {maximumFractionDigits: digits, minimumFractionDigits: digits});
+    }
+    function className(value) {
+      const number = Number(value || 0);
+      if (number > 0) return "positive";
+      if (number < 0) return "negative";
+      return "";
+    }
+    function renderLanguageControl() {
+      document.getElementById("languageHost").innerHTML = `
+        <label class="language-control" for="languageSelect">
+          <select id="languageSelect" aria-label="${text("language")}">
+            ${languageOptions.map(option => `<option value="${option.value}" ${option.value === currentLanguage ? "selected" : ""}>${option.label}</option>`).join("")}
+          </select>
+        </label>
+      `;
+      document.getElementById("languageSelect").addEventListener("change", event => {
+        currentLanguage = event.target.value;
+        localStorage.setItem("flowradar-language", currentLanguage);
+        renderAll();
+      });
+    }
+    function renderMarketNav() {
+      const host = document.getElementById("marketNav");
+      host.setAttribute("aria-label", text("marketNavAria"));
+      host.innerHTML = `
+        <a href="index.html">${marketName("kr")}</a>
+        <a href="japan.html">${marketName("jp")}</a>
+        <a class="active" href="taiwan.html">${marketName("tw")}</a>
+      `;
+    }
+    function renderMeta() {
+      const meta = data?.meta || {};
+      const latest = meta.latestDate ? `<span>${text("latestTradingDay")} ${meta.latestDate}</span>` : "";
+      const generated = meta.generatedAt ? `<span>${text("generatedAt")} ${meta.generatedAt}</span>` : "";
+      document.documentElement.lang = text("htmlLang") || currentLanguage;
+      document.title = `FlowRadar - ${marketName()} ${text("titleSuffix")}`;
+      document.getElementById("meta").innerHTML = `<span>${marketName()}</span>${latest}${generated}`;
+    }
+    function renderKpis() {
+      const summary = data?.summary || [];
+      const host = document.getElementById("kpis");
+      if (!summary.length) {
+        host.innerHTML = `<div class="empty">${text("waiting")}</div>`;
+        return;
+      }
+      host.innerHTML = summary.slice(0, 6).map(row => `
+        <div class="kpi">
+          <div class="label">${row.label || row["指标"] || row.name || "-"}</div>
+          <div class="value ${className(row.value ?? row["最近值"])}">${formatNumber(row.value ?? row["最近值"])}</div>
+          <div class="state">${row.state || row["连续状态"] || row.unit || ""}</div>
+        </div>
+      `).join("");
+    }
+    function renderTable() {
+      const rows = data?.rows || data?.marketFlow || data?.details || [];
+      if (!rows.length) {
+        document.getElementById("tableWrap").innerHTML = `<div class="empty">${text("emptyDetails")}</div>`;
+        return;
+      }
+      const recent = [...rows].reverse().slice(0, 30);
+      const columns = Object.keys(recent[0] || {});
+      document.getElementById("tableWrap").innerHTML = `
+        <table>
+          <thead><tr>${columns.map(column => `<th>${column}</th>`).join("")}</tr></thead>
+          <tbody>${recent.map(row => `<tr>${columns.map(column => {
+            const value = row[column];
+            const numeric = typeof value === "number";
+            return `<td class="${numeric ? className(value) : ""}">${numeric ? formatNumber(value) : (value ?? "")}</td>`;
+          }).join("")}</tr>`).join("")}</tbody>
+        </table>
+      `;
+    }
+    function renderStaticText() {
+      renderLanguageControl();
+      renderMarketNav();
+      renderMeta();
+      document.getElementById("kpiTitle").textContent = `${marketName()}${text("marketFlow")}`;
+      document.getElementById("kpiHint").textContent = data ? "" : text("waiting");
+      document.getElementById("detailTitle").textContent = text("recentDetails");
+      document.getElementById("tableHint").textContent = text("tableHint");
+    }
+    function renderAll() {
+      renderStaticText();
+      renderKpis();
+      renderTable();
+    }
+    async function boot() {
+      renderStaticText();
+      try {
+        const response = await fetch(pageConfig.dataUrl, {cache: "no-store"});
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        data = await response.json();
+      } catch (error) {
+        data = {meta: {}, summary: [], rows: []};
+      }
+      renderAll();
+    }
+    boot();
+  </script>
+</body>
+</html>

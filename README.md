@@ -57,6 +57,20 @@ python krx_money_flow.py --krx-id 你的账号 --krx-password 你的密码
 python krx_money_flow.py
 ```
 
+生成日股 JPX 周频投资者资金流数据：
+
+```bash
+python jpx_money_flow.py
+```
+
+该脚本会抓取 JPX `Trading by Type of Investors` 的周频 `Value` Excel，默认读取最近 52 周，并生成：
+
+```text
+site/data/japan/latest.json
+```
+
+日股口径为：`Foreigners -> 外资`，`Individuals -> 散户`，`Institutions + Proprietary + Securities Cos. -> 机构`，单位为亿日元。
+
 指定日期和股票：
 
 ```bash

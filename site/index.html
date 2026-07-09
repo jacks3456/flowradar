@@ -56,6 +56,30 @@
       padding: 6px 10px;
       border-radius: 6px;
     }
+    .market-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .market-nav a {
+      min-height: 32px;
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 6px 11px;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .market-nav a.active {
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
     .language-control {
       border: 1px solid var(--line);
       background: var(--panel);
@@ -248,6 +272,11 @@
         overflow-x: auto;
         padding-bottom: 2px;
       }
+      .market-nav {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+      }
+      .market-nav a { flex: 0 0 auto; }
       button { flex: 0 0 auto; }
     }
   </style>
@@ -258,6 +287,7 @@
       <h1 id="title">FlowRadar</h1>
       <div id="languageHost"></div>
     </div>
+    <nav class="market-nav" id="marketNav" aria-label="Markets"></nav>
     <div class="meta" id="meta"></div>
   </header>
   <main>
@@ -305,6 +335,8 @@
         htmlLang: "zh-CN",
         locale: "zh-CN",
         language: "语言",
+        marketNavAria: "市场页面",
+        markets: {kr: "韩股", jp: "日股", tw: "台股"},
         marketFlow: "市场资金方向",
         kpiHint: "单位：亿韩元，正数为净买入",
         cumulativeFlow: "累计资金流",
@@ -336,6 +368,8 @@
         htmlLang: "zh-Hant",
         locale: "zh-Hant",
         language: "語言",
+        marketNavAria: "市場頁面",
+        markets: {kr: "韓股", jp: "日股", tw: "台股"},
         marketFlow: "市場資金方向",
         kpiHint: "單位：億韓元，正數為淨買入",
         cumulativeFlow: "累計資金流",
@@ -367,6 +401,8 @@
         htmlLang: "en",
         locale: "en-US",
         language: "Language",
+        marketNavAria: "Market pages",
+        markets: {kr: "Korea", jp: "Japan", tw: "Taiwan"},
         marketFlow: "Market Money Flow",
         kpiHint: "Unit: 100M KRW. Positive values are net buying",
         cumulativeFlow: "Cumulative Flow",
@@ -398,6 +434,8 @@
         htmlLang: "ko",
         locale: "ko-KR",
         language: "언어",
+        marketNavAria: "시장 페이지",
+        markets: {kr: "한국", jp: "일본", tw: "대만"},
         marketFlow: "시장 수급 방향",
         kpiHint: "단위: 억 원, 양수는 순매수",
         cumulativeFlow: "누적 자금 흐름",
@@ -429,6 +467,8 @@
         htmlLang: "ja",
         locale: "ja-JP",
         language: "言語",
+        marketNavAria: "市場ページ",
+        markets: {kr: "韓国株", jp: "日本株", tw: "台湾株"},
         marketFlow: "市場資金動向",
         kpiHint: "単位：億ウォン、プラスは買い越し",
         cumulativeFlow: "累積資金フロー",
@@ -499,6 +539,10 @@
 
     function marketLabel(market) {
       return `${market} ${text("marketSuffix")}`;
+    }
+
+    function marketNavLabel(key) {
+      return text("markets")?.[key] || key;
     }
 
     function statusLabel(status) {
@@ -618,6 +662,16 @@
         if (data) renderAll();
         else renderStaticText();
       });
+    }
+
+    function renderMarketNav() {
+      const host = document.getElementById("marketNav");
+      host.setAttribute("aria-label", text("marketNavAria"));
+      host.innerHTML = `
+        <a class="active" href="index.html">${marketNavLabel("kr")}</a>
+        <a href="japan.html">${marketNavLabel("jp")}</a>
+        <a href="taiwan.html">${marketNavLabel("tw")}</a>
+      `;
     }
 
     function renderKpis() {
@@ -906,6 +960,7 @@
     function renderStaticText() {
       setDocumentLanguage();
       renderLanguageControl();
+      renderMarketNav();
       document.getElementById("kpiTitle").textContent = text("marketFlow");
       document.getElementById("kpiHint").textContent = text("kpiHint");
       document.getElementById("chartTitle").textContent = text("cumulativeFlow");
