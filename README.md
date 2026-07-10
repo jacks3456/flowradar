@@ -71,6 +71,20 @@ site/data/japan/latest.json
 
 日股口径为：`Foreigners -> 外资`，`Individuals -> 散户`，`Institutions + Proprietary + Securities Cos. -> 机构`，单位为亿日元。
 
+生成台股 TWSE 日频三大法人资金流数据：
+
+```bash
+python twse_money_flow.py
+```
+
+该脚本会抓取 TWSE `三大法人買賣金額統計表`，默认生成最近一年自然日窗口内的交易日数据：
+
+```text
+site/data/taiwan/latest.json
+```
+
+台股口径为：`外資及陸資(不含外資自營商) -> 外资`，`投信 -> 投信`，`自營商(自行買賣) + 自營商(避險) -> 自营商`，单位为亿新台币。
+
 指定日期和股票：
 
 ```bash

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FlowRadar - 台股</title>
+  <title>FlowRadar - TWSE</title>
   <style>
     :root {
       color-scheme: light;
@@ -45,7 +45,7 @@
       margin-top: 16px;
     }
     .meta { gap: 10px; color: var(--muted); font-size: 14px; }
-    .market-nav a, .meta span, .language-control {
+    .market-nav a, .meta span, .range-control, .language-control {
       border: 1px solid var(--line);
       background: var(--panel);
       border-radius: 6px;
@@ -61,16 +61,21 @@
       font-weight: 650;
     }
     .market-nav a.active { background: var(--ink); color: #fff; border-color: var(--ink); }
-    .meta span { padding: 6px 10px; }
+    .meta span, .range-control { padding: 6px 10px; }
+    .range-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
     .language-control {
       display: inline-flex;
       align-items: center;
       padding: 4px 6px;
       font-size: 12px;
     }
+    .range-control select,
     .language-control select {
       min-height: 20px;
-      min-width: 74px;
       border: 0;
       background: transparent;
       color: var(--ink);
@@ -78,6 +83,8 @@
       font-weight: 650;
       outline: 0;
     }
+    .range-control select { min-width: 72px; }
+    .language-control select { min-width: 74px; }
     main {
       width: min(1220px, calc(100% - 32px));
       margin: 24px auto 42px;
@@ -118,6 +125,54 @@
     .kpi .label { color: var(--muted); font-size: 13px; }
     .kpi .value { margin-top: 8px; font-size: clamp(24px, 3vw, 34px); font-weight: 750; }
     .kpi .state { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .chart-wrap {
+      padding: 18px;
+      position: relative;
+    }
+    .chart-tooltip {
+      position: absolute;
+      z-index: 3;
+      min-width: 168px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.96);
+      box-shadow: 0 10px 24px rgba(23, 32, 28, 0.12);
+      color: var(--ink);
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.55;
+      pointer-events: none;
+      transform: translate(-50%, calc(-100% - 12px));
+    }
+    .chart-tooltip[hidden] { display: none; }
+    .chart-tooltip .date {
+      margin-bottom: 4px;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .chart-tooltip .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .chart-tooltip .name {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+    }
+    .chart-tooltip .swatch {
+      width: 14px;
+      height: 3px;
+      border-radius: 99px;
+      background: var(--ink);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 420px;
+    }
     .status, .empty { padding: 18px; }
     .table-wrap { overflow: auto; padding: 18px; }
     table { width: 100%; border-collapse: collapse; min-width: 720px; font-size: 13px; }
@@ -142,6 +197,7 @@
       .market-nav { flex-wrap: nowrap; overflow-x: auto; }
       .market-nav a { flex: 0 0 auto; }
       .kpis { grid-template-columns: 1fr; }
+      canvas { height: 330px; }
       .section-head { align-items: flex-start; flex-direction: column; }
       .hint { white-space: normal; }
     }
@@ -167,6 +223,17 @@
 
     <section>
       <div class="section-head">
+        <h2 id="chartTitle">累计资金流</h2>
+        <div class="hint" id="chartHint">外资、投信、自营商累计净买卖金额</div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="flowChart"></canvas>
+        <div class="chart-tooltip" id="chartTooltip" hidden></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-head">
         <h2 id="detailTitle">最近明细</h2>
         <div class="hint" id="tableHint">按日期倒序</div>
       </div>
@@ -176,6 +243,14 @@
 
   <script>
     const pageConfig = {marketKey: "tw", dataUrl: "data/taiwan/latest.json"};
+    const investors = ["外资", "投信", "自营商"];
+    const colors = {"外资": "#0f766e", "投信": "#b45309", "自营商": "#2563eb"};
+    const periodOptions = [
+      {value: "365d", days: 365},
+      {value: "180d", days: 180},
+      {value: "90d", days: 90}
+    ];
+    const detailPeriodDays = 30;
     const languageOptions = [
       {value: "en", label: "English"},
       {value: "ko", label: "한국어"},
@@ -184,18 +259,32 @@
       {value: "zh-CN", label: "简体中文"}
     ];
     const i18n = {
-      "zh-CN": {htmlLang: "zh-CN", locale: "zh-CN", language: "语言", marketNavAria: "市场页面", markets: {kr: "韩股", jp: "日股", tw: "台股"}, titleSuffix: "资金流", marketFlow: "资金方向", recentDetails: "最近明细", tableHint: "按日期倒序", waiting: "等待数据源接入", loading: "加载中", dataUnavailable: "数据暂不可用", latestTradingDay: "最新交易日", generatedAt: "生成时间", emptyDetails: "暂无明细数据"},
-      "zh-Hant": {htmlLang: "zh-Hant", locale: "zh-Hant", language: "語言", marketNavAria: "市場頁面", markets: {kr: "韓股", jp: "日股", tw: "台股"}, titleSuffix: "資金流", marketFlow: "資金方向", recentDetails: "最近明細", tableHint: "按日期倒序", waiting: "等待資料源接入", loading: "載入中", dataUnavailable: "資料暫不可用", latestTradingDay: "最新交易日", generatedAt: "生成時間", emptyDetails: "暫無明細資料"},
-      en: {htmlLang: "en", locale: "en-US", language: "Language", marketNavAria: "Market pages", markets: {kr: "Korea", jp: "Japan", tw: "Taiwan"}, titleSuffix: "Money Flow", marketFlow: "Money Flow", recentDetails: "Recent Details", tableHint: "Newest first", waiting: "Waiting for data source", loading: "Loading", dataUnavailable: "Data unavailable", latestTradingDay: "Latest trading day", generatedAt: "Generated at", emptyDetails: "No detail data"},
-      ko: {htmlLang: "ko", locale: "ko-KR", language: "언어", marketNavAria: "시장 페이지", markets: {kr: "한국", jp: "일본", tw: "대만"}, titleSuffix: "자금 흐름", marketFlow: "자금 방향", recentDetails: "최근 상세", tableHint: "최신순", waiting: "데이터 소스 연결 대기 중", loading: "불러오는 중", dataUnavailable: "데이터를 사용할 수 없습니다", latestTradingDay: "최근 거래일", generatedAt: "생성 시간", emptyDetails: "상세 데이터가 없습니다"},
-      ja: {htmlLang: "ja", locale: "ja-JP", language: "言語", marketNavAria: "市場ページ", markets: {kr: "韓国株", jp: "日本株", tw: "台湾株"}, titleSuffix: "資金フロー", marketFlow: "資金動向", recentDetails: "直近明細", tableHint: "日付降順", waiting: "データソース接続待ち", loading: "読み込み中", dataUnavailable: "データを利用できません", latestTradingDay: "最新取引日", generatedAt: "生成時刻", emptyDetails: "明細データはありません"}
+      "zh-CN": {htmlLang: "zh-CN", locale: "zh-CN", language: "语言", marketNavAria: "市场页面", markets: {kr: "韩股", jp: "日股", tw: "TWSE"}, titleSuffix: "资金流", marketFlow: "资金方向", cumulativeFlow: "累计资金流", chartHintBase: "外资、投信、自营商累计净买卖金额", recentDetails: "最近明细", tableHint: "单位：亿新台币", unitHint: "单位：亿新台币，正数为净买入", waiting: "等待数据源接入", loading: "加载中", dataUnavailable: "数据暂不可用", latestTradingDay: "最新交易日", range: "区间", rangeAria: "选择数据区间", emptyDetails: "暂无明细数据", periods: {"365d": "365d", "180d": "180d", "90d": "90d"}, investors: {"外资": "外资", "投信": "投信", "自营商": "自营商"}},
+      "zh-Hant": {htmlLang: "zh-Hant", locale: "zh-Hant", language: "語言", marketNavAria: "市場頁面", markets: {kr: "韓股", jp: "日股", tw: "TWSE"}, titleSuffix: "資金流", marketFlow: "資金方向", cumulativeFlow: "累計資金流", chartHintBase: "外資、投信、自營商累計淨買賣金額", recentDetails: "最近明細", tableHint: "單位：億新台幣", unitHint: "單位：億新台幣，正數為淨買入", waiting: "等待資料源接入", loading: "載入中", dataUnavailable: "資料暫不可用", latestTradingDay: "最新交易日", range: "區間", rangeAria: "選擇資料區間", emptyDetails: "暫無明細資料", periods: {"365d": "365d", "180d": "180d", "90d": "90d"}, investors: {"外资": "外資", "投信": "投信", "自营商": "自營商"}},
+      en: {htmlLang: "en", locale: "en-US", language: "Language", marketNavAria: "Market pages", markets: {kr: "Korea", jp: "Japan", tw: "TWSE"}, titleSuffix: "Money Flow", marketFlow: "Money Flow", cumulativeFlow: "Cumulative Flow", chartHintBase: "Cumulative net buy/sell amount by foreign, investment trust, and dealer flows", recentDetails: "Recent Details", tableHint: "Unit: 100M TWD", unitHint: "Unit: 100M TWD. Positive values are net buying", waiting: "Waiting for data source", loading: "Loading", dataUnavailable: "Data unavailable", latestTradingDay: "Latest trading day", range: "Range", rangeAria: "Select data range", emptyDetails: "No detail data", periods: {"365d": "365d", "180d": "180d", "90d": "90d"}, investors: {"外资": "Foreign", "投信": "Investment Trust", "自营商": "Dealer"}},
+      ko: {htmlLang: "ko", locale: "ko-KR", language: "언어", marketNavAria: "시장 페이지", markets: {kr: "한국", jp: "일본", tw: "TWSE"}, titleSuffix: "자금 흐름", marketFlow: "자금 방향", cumulativeFlow: "누적 자금 흐름", chartHintBase: "외국인, 투신, 딜러 누적 순매수 금액", recentDetails: "최근 상세", tableHint: "단위: 억 대만 달러", unitHint: "단위: 억 대만 달러, 양수는 순매수", waiting: "데이터 소스 연결 대기 중", loading: "불러오는 중", dataUnavailable: "데이터를 사용할 수 없습니다", latestTradingDay: "최근 거래일", range: "구간", rangeAria: "데이터 구간 선택", emptyDetails: "상세 데이터가 없습니다", periods: {"365d": "365d", "180d": "180d", "90d": "90d"}, investors: {"外资": "외국인", "投信": "투신", "自营商": "딜러"}},
+      ja: {htmlLang: "ja", locale: "ja-JP", language: "言語", marketNavAria: "市場ページ", markets: {kr: "韓国株", jp: "日本株", tw: "TWSE"}, titleSuffix: "資金フロー", marketFlow: "資金動向", cumulativeFlow: "累積資金フロー", chartHintBase: "外国人、投信、ディーラーの累積売買代金", recentDetails: "直近明細", tableHint: "単位：億台湾ドル", unitHint: "単位：億台湾ドル、プラスは買い越し", waiting: "データソース接続待ち", loading: "読み込み中", dataUnavailable: "データを利用できません", latestTradingDay: "最新取引日", range: "期間", rangeAria: "データ期間を選択", emptyDetails: "明細データはありません", periods: {"365d": "365d", "180d": "180d", "90d": "90d"}, investors: {"外资": "外国人", "投信": "投信", "自营商": "ディーラー"}}
     };
     let currentLanguage = localStorage.getItem("flowradar-language") || "zh-CN";
+    let selectedPeriod = "365d";
     let data = null;
+    let chartHoverIndex = null;
 
     function text(key) { return (i18n[currentLanguage] || i18n["zh-CN"])[key]; }
     function locale() { return text("locale") || "zh-CN"; }
     function marketName(key = pageConfig.marketKey) { return text("markets")?.[key] || key; }
+    function marketNavName(key) {
+      const labels = {
+        "zh-CN": {kr: "韩股", jp: "日股", tw: "台股"},
+        "zh-Hant": {kr: "韓股", jp: "日股", tw: "台股"},
+        en: {kr: "Korea", jp: "Japan", tw: "Taiwan"},
+        ko: {kr: "한국", jp: "일본", tw: "대만"},
+        ja: {kr: "韓国株", jp: "日本株", tw: "台湾株"}
+      };
+      return labels[currentLanguage]?.[key] || marketName(key);
+    }
+    function investorLabel(name) { return text("investors")?.[name] || name; }
+    function periodLabel(value) { return text("periods")?.[value] || value; }
     function formatNumber(value, digits = 2) {
       return Number(value || 0).toLocaleString(locale(), {maximumFractionDigits: digits, minimumFractionDigits: digits});
     }
@@ -204,6 +293,41 @@
       if (number > 0) return "positive";
       if (number < 0) return "negative";
       return "";
+    }
+    function periodRows() {
+      const rows = data?.marketFlow || [];
+      const option = periodOptions.find(item => item.value === selectedPeriod) || periodOptions[0];
+      return rowsForDays(option.days);
+    }
+    function rowsForDays(days) {
+      const rows = data?.marketFlow || [];
+      const latest = rows.reduce((latestDate, row) => {
+        const rowDate = parseDate(row["日期"]);
+        return rowDate && (!latestDate || rowDate > latestDate) ? rowDate : latestDate;
+      }, null);
+      if (!latest) return rows;
+      const start = new Date(latest);
+      start.setDate(start.getDate() - days + 1);
+      return rows.filter(row => {
+        const rowDate = parseDate(row["日期"]);
+        return rowDate && rowDate >= start && rowDate <= latest;
+      });
+    }
+    function parseDate(value) {
+      const date = new Date(`${value || ""}T00:00:00`);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    function chartRows() {
+      const totals = {"外资": 0, "投信": 0, "自营商": 0};
+      return periodRows().map(row => {
+        const next = {...row};
+        investors.forEach(name => {
+          const cumulativeKey = `${name}累计`;
+          totals[name] += Number(row[name] || 0);
+          next[cumulativeKey] = totals[name];
+        });
+        return next;
+      });
     }
     function renderLanguageControl() {
       document.getElementById("languageHost").innerHTML = `
@@ -223,18 +347,32 @@
       const host = document.getElementById("marketNav");
       host.setAttribute("aria-label", text("marketNavAria"));
       host.innerHTML = `
-        <a href="index.html">${marketName("kr")}</a>
-        <a href="japan.html">${marketName("jp")}</a>
-        <a class="active" href="taiwan.html">${marketName("tw")}</a>
+        <a href="index.html">${marketNavName("kr")}</a>
+        <a href="japan.html">${marketNavName("jp")}</a>
+        <a class="active" href="taiwan.html">${marketNavName("tw")}</a>
       `;
     }
     function renderMeta() {
       const meta = data?.meta || {};
-      const latest = meta.latestDate ? `<span>${text("latestTradingDay")} ${meta.latestDate}</span>` : "";
-      const generated = meta.generatedAt ? `<span>${text("generatedAt")} ${meta.generatedAt}</span>` : "";
+      const latestPeriod = meta.latestPeriodLabel || meta.latestDate;
+      const latest = latestPeriod ? `<span>${text("latestTradingDay")} ${latestPeriod}</span>` : "";
       document.documentElement.lang = text("htmlLang") || currentLanguage;
       document.title = `FlowRadar - ${marketName()} ${text("titleSuffix")}`;
-      document.getElementById("meta").innerHTML = `<span>${marketName()}</span>${latest}${generated}`;
+      document.getElementById("meta").innerHTML = `
+        <span>${marketName()}</span>
+        <label class="range-control" for="periodSelect">
+          ${text("range")}
+          <select id="periodSelect" aria-label="${text("rangeAria")}">
+            ${periodOptions.map(option => `<option value="${option.value}" ${option.value === selectedPeriod ? "selected" : ""}>${periodLabel(option.value)}</option>`).join("")}
+          </select>
+        </label>
+        ${latest}
+      `;
+      document.getElementById("periodSelect").addEventListener("change", event => {
+        selectedPeriod = event.target.value;
+        chartHoverIndex = null;
+        renderAll();
+      });
     }
     function renderKpis() {
       const summary = data?.summary || [];
@@ -252,13 +390,15 @@
       `).join("");
     }
     function renderTable() {
-      const rows = data?.rows || data?.marketFlow || data?.details || [];
+      const rows = data?.rows || rowsForDays(detailPeriodDays) || data?.details || [];
       if (!rows.length) {
         document.getElementById("tableWrap").innerHTML = `<div class="empty">${text("emptyDetails")}</div>`;
         return;
       }
-      const recent = [...rows].reverse().slice(0, 30);
-      const columns = Object.keys(recent[0] || {});
+      const recent = [...rows].reverse();
+      const columns = Object.keys(recent[0] || {}).filter(column => (
+        column !== "来源" && !column.endsWith("累计")
+      ));
       document.getElementById("tableWrap").innerHTML = `
         <table>
           <thead><tr>${columns.map(column => `<th>${column}</th>`).join("")}</tr></thead>
@@ -270,18 +410,212 @@
         </table>
       `;
     }
+    function drawChart() {
+      const canvas = document.getElementById("flowChart");
+      const ctx = canvas.getContext("2d");
+      const ratio = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * ratio;
+      canvas.height = rect.height * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      const width = rect.width;
+      const height = rect.height;
+      const points = chartRows();
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      if (!points.length) {
+        canvas._chartState = null;
+        return;
+      }
+
+      const values = points.flatMap(row => investors.map(name => Number(row[`${name}累计`] || 0)));
+      let min = Math.min(...values, 0);
+      let max = Math.max(...values, 0);
+      if (min === max) { min -= 1; max += 1; }
+      const padding = (max - min) * 0.14;
+      min -= padding;
+      max += padding;
+      ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      const yLabels = Array.from({length: 5}, (_, index) => formatNumber(max - index / 4 * (max - min), 0));
+      const leftPad = Math.max(58, Math.ceil(Math.max(...yLabels.map(label => ctx.measureText(label).width))) + 14);
+      const pad = {left: Math.min(leftPad, Math.max(58, width * 0.32)), right: 18, top: 24, bottom: 74};
+      const plotW = width - pad.left - pad.right;
+      const plotH = height - pad.top - pad.bottom;
+      const x = index => pad.left + (points.length === 1 ? plotW / 2 : (index / (points.length - 1)) * plotW);
+      const y = value => pad.top + (max - value) / (max - min) * plotH;
+      const xTickCount = Math.min(4, points.length);
+      const xTickIndexes = Array.from({length: xTickCount}, (_, tick) => {
+        if (xTickCount === 1) return 0;
+        return Math.round(tick * (points.length - 1) / (xTickCount - 1));
+      }).filter((index, position, list) => list.indexOf(index) === position);
+
+      ctx.strokeStyle = "#dfe6df";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i <= 4; i++) {
+        const gy = pad.top + i / 4 * plotH;
+        ctx.moveTo(pad.left, gy);
+        ctx.lineTo(width - pad.right, gy);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = "#62706a";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (let i = 0; i <= 4; i++) {
+        ctx.fillText(yLabels[i], pad.left - 8, pad.top + i / 4 * plotH);
+      }
+
+      const zeroY = y(0);
+      ctx.strokeStyle = "#94a39d";
+      ctx.beginPath();
+      ctx.moveTo(pad.left, zeroY);
+      ctx.lineTo(width - pad.right, zeroY);
+      ctx.stroke();
+
+      investors.forEach(name => {
+        ctx.strokeStyle = colors[name];
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        points.forEach((row, index) => {
+          const px = x(index);
+          const py = y(Number(row[`${name}累计`] || 0));
+          if (index === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+      });
+
+      if (chartHoverIndex !== null && points[chartHoverIndex]) {
+        const hoverX = x(chartHoverIndex);
+        ctx.strokeStyle = "#7b8a84";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(hoverX, pad.top);
+        ctx.lineTo(hoverX, pad.top + plotH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        investors.forEach(name => {
+          const hoverY = y(Number(points[chartHoverIndex][`${name}累计`] || 0));
+          ctx.fillStyle = "#ffffff";
+          ctx.strokeStyle = colors[name];
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(hoverX, hoverY, 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        });
+      }
+
+      const axisY = pad.top + plotH;
+      const dateY = height - 44;
+      ctx.strokeStyle = "#b7c2bd";
+      ctx.beginPath();
+      ctx.moveTo(pad.left, axisY);
+      ctx.lineTo(width - pad.right, axisY);
+      xTickIndexes.forEach(index => {
+        const tx = x(index);
+        ctx.moveTo(tx, axisY);
+        ctx.lineTo(tx, axisY + 5);
+      });
+      ctx.stroke();
+
+      ctx.fillStyle = "#62706a";
+      ctx.textBaseline = "alphabetic";
+      xTickIndexes.forEach((pointIndex, tickIndex) => {
+        const tx = x(pointIndex);
+        if (tickIndex === 0) ctx.textAlign = "left";
+        else if (tickIndex === xTickIndexes.length - 1) ctx.textAlign = "right";
+        else ctx.textAlign = "center";
+        ctx.fillText(points[pointIndex]["日期"], tx, dateY);
+      });
+
+      ctx.textAlign = "left";
+      investors.forEach((name, index) => {
+        const lx = pad.left + index * 92;
+        const ly = height - 14;
+        ctx.fillStyle = colors[name];
+        ctx.fillRect(lx, ly - 10, 18, 3);
+        ctx.fillStyle = "#35433e";
+        ctx.fillText(investorLabel(name), lx + 25, ly - 5);
+      });
+
+      canvas._chartState = {points, pad, plotW, plotH};
+    }
+    function showChartTooltip(index, mouseX, mouseY) {
+      const tooltip = document.getElementById("chartTooltip");
+      const canvas = document.getElementById("flowChart");
+      const state = canvas._chartState;
+      const point = state?.points?.[index];
+      if (!point) {
+        hideChartTooltip();
+        return;
+      }
+      tooltip.innerHTML = `
+        <div class="date">${point["区间"] || point["日期"]}</div>
+        ${investors.map(name => `
+          <div class="row">
+            <span class="name"><span class="swatch" style="background:${colors[name]}"></span>${investorLabel(name)}</span>
+            <strong class="${className(point[`${name}累计`])}">${formatNumber(point[`${name}累计`], 2)}</strong>
+          </div>
+        `).join("")}
+      `;
+      tooltip.hidden = false;
+      const wrap = canvas.parentElement;
+      const tooltipWidth = tooltip.offsetWidth;
+      const tooltipHeight = tooltip.offsetHeight;
+      const x = Math.min(Math.max(mouseX, tooltipWidth / 2 + 8), wrap.clientWidth - tooltipWidth / 2 - 8);
+      const y = Math.max(mouseY, tooltipHeight + 18);
+      tooltip.style.left = `${x}px`;
+      tooltip.style.top = `${y}px`;
+    }
+    function hideChartTooltip() {
+      const tooltip = document.getElementById("chartTooltip");
+      chartHoverIndex = null;
+      if (tooltip) tooltip.hidden = true;
+      if (data) drawChart();
+    }
+    function bindChartTooltip() {
+      const canvas = document.getElementById("flowChart");
+      canvas.addEventListener("mousemove", event => {
+        const state = canvas._chartState;
+        if (!state?.points?.length) return;
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+        const {points, pad, plotW, plotH} = state;
+        if (mouseX < pad.left || mouseX > pad.left + plotW || mouseY < pad.top || mouseY > pad.top + plotH) {
+          hideChartTooltip();
+          return;
+        }
+        const index = Math.round((mouseX - pad.left) / plotW * (points.length - 1));
+        const boundedIndex = Math.min(Math.max(index, 0), points.length - 1);
+        if (boundedIndex !== chartHoverIndex) {
+          chartHoverIndex = boundedIndex;
+          drawChart();
+        }
+        showChartTooltip(boundedIndex, mouseX, mouseY);
+      });
+      canvas.addEventListener("mouseleave", hideChartTooltip);
+    }
     function renderStaticText() {
       renderLanguageControl();
       renderMarketNav();
       renderMeta();
       document.getElementById("kpiTitle").textContent = `${marketName()}${text("marketFlow")}`;
-      document.getElementById("kpiHint").textContent = data ? "" : text("waiting");
+      document.getElementById("kpiHint").textContent = data?.marketFlow?.length ? text("unitHint") : text("waiting");
+      document.getElementById("chartTitle").textContent = text("cumulativeFlow");
+      document.getElementById("chartHint").textContent = text("chartHintBase");
       document.getElementById("detailTitle").textContent = text("recentDetails");
       document.getElementById("tableHint").textContent = text("tableHint");
     }
     function renderAll() {
       renderStaticText();
       renderKpis();
+      drawChart();
       renderTable();
     }
     async function boot() {
@@ -294,7 +628,11 @@
         data = {meta: {}, summary: [], rows: []};
       }
       renderAll();
+      bindChartTooltip();
     }
+    window.addEventListener("resize", () => {
+      if (data) drawChart();
+    });
     boot();
   </script>
 </body>
