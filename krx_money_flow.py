@@ -198,7 +198,7 @@ class KrxClient:
 
 def parse_args() -> argparse.Namespace:
     today = dt.date.today()
-    default_start = today - dt.timedelta(days=90)
+    default_start = today - dt.timedelta(days=365)
     parser = argparse.ArgumentParser(
         description="KRX 外资/机构/散户资金流 Excel 报表生成器"
     )

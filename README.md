@@ -51,7 +51,7 @@ python krx_money_flow.py --krx-id 你的账号 --krx-password 你的密码
 
 ## 使用
 
-默认抓取最近约 90 天：
+默认抓取最近一年：
 
 ```bash
 python krx_money_flow.py
