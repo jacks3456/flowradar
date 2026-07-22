@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FlowRadar - 韩国股市杠杆</title>
+  <style>
+    :root { --bg:#f7f8f5; --panel:#fff; --ink:#17201c; --muted:#62706a; --line:#dfe6df; --soft:#eef4f0; --accent:#155e75; --warn:#b45309; --danger:#b91c1c; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+    header { padding:28px clamp(16px,4vw,48px) 18px; border-bottom:1px solid var(--line); background:#fbfcf9; }
+    .header-top { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+    h1 { margin:0; font-size:clamp(26px,4vw,42px); line-height:1.12; }
+    .subtitle { color:var(--muted); margin:8px 0 0; font-size:14px; }
+    .market-nav,.meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+    .market-nav a,.meta span,.range-control { border:1px solid var(--line); background:var(--panel); border-radius:6px; }
+    .market-nav a { min-height:32px; display:inline-flex; align-items:center; color:var(--ink); padding:6px 11px; text-decoration:none; font-size:13px; font-weight:650; }
+    .market-nav a.active { background:var(--ink); color:#fff; border-color:var(--ink); }
+    .meta { color:var(--muted); font-size:14px; gap:10px; }
+    .meta span,.range-control { padding:6px 10px; }
+    .range-control select { border:0; background:transparent; color:var(--ink); font:inherit; font-weight:650; outline:0; }
+    main { width:min(1220px,calc(100% - 32px)); margin:24px auto 42px; display:grid; gap:22px; }
+    section { background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+    .section-head { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:16px 18px; border-bottom:1px solid var(--line); background:#fbfcf9; }
+    h2 { margin:0; font-size:17px; line-height:1.25; }
+    .hint,.status { color:var(--muted); font-size:13px; }
+    .kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; padding:18px; }
+    .kpi { min-height:126px; border:1px solid var(--line); border-radius:8px; padding:14px; background:var(--soft); }
+    .kpi.primary { background:#e8f2f2; border-color:#c8dddd; }
+    .kpi .label { color:var(--muted); font-size:13px; }
+    .kpi .value { margin-top:8px; font-size:clamp(23px,2.8vw,33px); font-weight:760; letter-spacing:-.03em; }
+    .kpi .state { margin-top:8px; color:var(--muted); font-size:12px; line-height:1.4; }
+    .pill { display:inline-flex; align-items:center; padding:3px 8px; border-radius:999px; font-size:12px; font-weight:700; background:#dce9e3; color:#24513e; }
+    .pill.high { color:#8a3d08; background:#fef0d8; }
+    .pill.extreme { color:#991b1b; background:#fee2e2; }
+    .charts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .chart-panel { min-width:0; padding:18px; position:relative; }
+    .chart-panel + .chart-panel { border-left:1px solid var(--line); }
+    .chart-title { display:flex; justify-content:space-between; gap:10px; margin-bottom:10px; color:var(--muted); font-size:12px; }
+    canvas { display:block; width:100%; height:360px; }
+    .chart-tooltip { position:absolute; z-index:4; min-width:150px; padding:9px 11px; border:1px solid var(--line); border-radius:7px; background:rgba(255,255,255,.96); box-shadow:0 8px 22px rgba(23,32,28,.14); font-size:12px; line-height:1.55; pointer-events:none; transform:translate(-50%,calc(-100% - 10px)); }
+    .chart-tooltip[hidden] { display:none; }
+    .chart-tooltip strong { display:block; margin-bottom:2px; }
+    .chart-tooltip span { color:var(--muted); }
+    .method-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; padding:18px; }
+    .method { border:1px solid var(--line); border-radius:8px; padding:14px; }
+    .method strong { display:block; margin-bottom:5px; font-size:13px; }
+    .method span { color:var(--muted); font-size:12px; line-height:1.55; }
+    .positive { color:#b91c1c; } .negative { color:#047857; }
+    @media(max-width:900px){ .kpis{grid-template-columns:repeat(2,1fr)} .charts{grid-template-columns:1fr}.chart-panel+.chart-panel{border-left:0;border-top:1px solid var(--line)} }
+    @media(max-width:600px){ .market-nav{flex-wrap:nowrap;overflow:auto}.market-nav a{flex:0 0 auto}.kpis{grid-template-columns:1fr}.section-head{align-items:flex-start;flex-direction:column}.method-grid{grid-template-columns:1fr}canvas{height:300px} }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-top"><div><h1>FlowRadar</h1><p class="subtitle">韩国股市杠杆监测</p></div></div>
+    <nav class="market-nav" aria-label="市场页面">
+      <a href="index.html">韩股资金流</a><a href="korea-leverage.html" class="active">韩股杠杆</a><a href="japan.html">日股</a><a href="taiwan.html">台股</a>
+    </nav>
+    <div class="meta" id="meta"><span>加载中</span></div>
+  </header>
+  <main>
+    <section>
+      <div class="section-head"><h2>当前杠杆状态</h2><div class="hint">信用融资余额口径，单位：亿韩元</div></div>
+      <div class="kpis" id="kpis"><div class="status">加载中</div></div>
+    </section>
+    <section>
+      <div class="section-head"><h2>历史走势</h2><label class="range-control">区间 <select id="range"><option value="252" selected>1年</option><option value="756">3年</option><option value="1260">5年</option><option value="2520">10年</option><option value="99999">全部</option></select></label></div>
+      <div class="charts">
+        <div class="chart-panel"><div class="chart-title"><span>信用融资余额</span><span>亿韩元</span></div><canvas id="creditChart"></canvas><div class="chart-tooltip" id="creditTooltip" hidden></div></div>
+        <div class="chart-panel"><div class="chart-title"><span>强制平仓金额</span><span>亿韩元</span></div><canvas id="forcedSalesChart"></canvas><div class="chart-tooltip" id="forcedSalesTooltip" hidden></div></div>
+        <div class="chart-panel"><div class="chart-title"><span>投资者保证金</span><span>亿韩元</span></div><canvas id="depositsChart"></canvas><div class="chart-tooltip" id="depositsTooltip" hidden></div></div>
+      </div>
+    </section>
+    <section>
+      <div class="section-head"><h2>计算口径</h2><div class="hint">所有分位数基于可取得的历史窗口</div></div>
+      <div class="method-grid" id="methods"></div>
+    </section>
+  </main>
+  <script>
+    const DATA_URL="data/korea-leverage/latest.json"; let data=null;
+    const n=(value,digits=2)=>Number(value||0).toLocaleString("zh-CN",{minimumFractionDigits:digits,maximumFractionDigits:digits});
+    const cls=value=>Number(value)>0?"positive":Number(value)<0?"negative":"";
+    function pill(label,score){const type=score>=95?"extreme":score>=70?"high":"";return `<span class="pill ${type}">${label}</span>`}
+    function renderMeta(){const m=data.meta;document.getElementById("meta").innerHTML=`<span>最新交易日 ${m.latestDate}</span><span>历史 ${m.historyDays} 个交易日</span><span>来源 ${m.source}</span>`}
+    function renderKpis(){const x=data.latest;document.getElementById("kpis").innerHTML=`
+      <div class="kpi primary"><div class="label">全市场市值杠杆率</div><div class="value">${n(x.leveragePct,3)}%</div><div class="state">历史分位 ${n(x.leveragePercentile,1)}%</div></div>
+      <div class="kpi"><div class="label">KOSPI / KOSDAQ</div><div class="value">${n(x.kospiLeveragePct,3)}% / ${n(x.kosdaqLeveragePct,3)}%</div><div class="state">历史分位 ${n(x.kospiLeveragePercentile,1)}% / ${n(x.kosdaqLeveragePercentile,1)}%</div></div>
+      <div class="kpi"><div class="label">综合压力分数</div><div class="value">${n(x.stressScore,1)}</div><div class="state">${pill(x.stressLabel,x.stressScore)}　历史分位加权</div></div>
+      <div class="kpi"><div class="label">信用融资余额</div><div class="value">${n(x.credit100m,0)} 亿</div><div class="state ${cls(x.credit20dChangePct)}">20日变化 ${x.credit20dChangePct>0?"+":""}${n(x.credit20dChangePct,1)}%</div></div>
+      <div class="kpi"><div class="label">投资者保证金</div><div class="value">${n(x.deposits100m,0)} 亿</div><div class="state">融资 / 保证金 ${n(x.creditDepositPct,1)}%</div></div>
+      <div class="kpi"><div class="label">强制平仓金额</div><div class="value">${n(x.forcedSales100m,1)} 亿</div><div class="state">未结算欠款强平比例 ${n(x.forcedSaleRatePct,1)}%</div></div>`}
+    function series(){const limit=Number(document.getElementById("range").value);return data.rows.slice(-limit)}
+    const chartDefinitions={creditChart:{key:"credit100m",label:"信用融资余额",color:"#155e75",tooltip:"creditTooltip"},forcedSalesChart:{key:"forcedSales100m",label:"强制平仓金额",color:"#b91c1c",tooltip:"forcedSalesTooltip",min:0},depositsChart:{key:"deposits100m",label:"投资者保证金",color:"#047857",tooltip:"depositsTooltip"}};
+    function draw(canvasId,sets,minOverride,maxOverride){const canvas=document.getElementById(canvasId),ctx=canvas.getContext("2d"),ratio=devicePixelRatio||1,rect=canvas.getBoundingClientRect();canvas.width=rect.width*ratio;canvas.height=rect.height*ratio;ctx.setTransform(ratio,0,0,ratio,0,0);const rows=series(),w=rect.width,h=rect.height,p={l:48,r:14,t:14,b:34};ctx.fillStyle="#fff";ctx.fillRect(0,0,w,h);let values=sets.flatMap(s=>rows.map(r=>Number(r[s.key]||0))),min=minOverride??Math.min(...values),max=maxOverride??Math.max(...values);if(min===max){min-=1;max+=1}const extra=(max-min)*.08;min=minOverride??min-extra;max=maxOverride??max+extra;const plotW=w-p.l-p.r,plotH=h-p.t-p.b,x=i=>p.l+i/(Math.max(rows.length-1,1))*plotW,y=v=>p.t+(max-v)/(max-min)*plotH;ctx.strokeStyle="#dfe6df";ctx.lineWidth=1;ctx.font="11px -apple-system,sans-serif";ctx.fillStyle="#62706a";for(let i=0;i<5;i++){const gy=p.t+i/4*plotH,val=max-i/4*(max-min);ctx.beginPath();ctx.moveTo(p.l,gy);ctx.lineTo(w-p.r,gy);ctx.stroke();ctx.textAlign="right";ctx.fillText(n(val,val<10?2:0),p.l-7,gy+4)}sets.forEach(s=>{ctx.strokeStyle=s.color;ctx.lineWidth=2;ctx.beginPath();rows.forEach((r,i)=>{const px=x(i),py=y(Number(r[s.key]||0));i?ctx.lineTo(px,py):ctx.moveTo(px,py)});ctx.stroke()});if(canvas._hoverIndex!=null&&rows[canvas._hoverIndex]){const index=canvas._hoverIndex,hx=x(index);ctx.strokeStyle="#7b8a84";ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(hx,p.t);ctx.lineTo(hx,p.t+plotH);ctx.stroke();ctx.setLineDash([]);sets.forEach(s=>{const hy=y(Number(rows[index][s.key]||0));ctx.fillStyle="#fff";ctx.strokeStyle=s.color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(hx,hy,4,0,Math.PI*2);ctx.fill();ctx.stroke()})}ctx.textAlign="left";ctx.fillStyle="#62706a";if(rows.length){ctx.fillText(rows[0].date,p.l,h-10);ctx.textAlign="right";ctx.fillText(rows[rows.length-1].date,w-p.r,h-10)}sets.forEach((s,i)=>{ctx.textAlign="left";ctx.fillStyle=s.color;ctx.fillRect(p.l+i*105,p.t+5,15,3);ctx.fillStyle="#35433e";ctx.fillText(s.label,p.l+21+i*105,p.t+11)});canvas._chartState={rows,p,plotW,plotH,x}}
+    function drawChart(id){const d=chartDefinitions[id];draw(id,[{key:d.key,label:d.label,color:d.color}],d.min,d.max)}
+    function drawAll(){Object.keys(chartDefinitions).forEach(drawChart)}
+    function bindChartTooltips(){Object.entries(chartDefinitions).forEach(([id,d])=>{const canvas=document.getElementById(id),tooltip=document.getElementById(d.tooltip);canvas.addEventListener("mousemove",event=>{const state=canvas._chartState;if(!state?.rows?.length)return;const rect=canvas.getBoundingClientRect(),mx=event.clientX-rect.left,my=event.clientY-rect.top,{p,plotW,plotH,rows}=state;if(mx<p.l||mx>p.l+plotW||my<p.t||my>p.t+plotH){canvas._hoverIndex=null;tooltip.hidden=true;drawChart(id);return}const index=Math.max(0,Math.min(rows.length-1,Math.round((mx-p.l)/plotW*(rows.length-1))));canvas._hoverIndex=index;drawChart(id);const row=rows[index];tooltip.innerHTML=`<strong>${row.date}</strong><span>${d.label}</span><br>${n(row[d.key],d.key==="forcedSales100m"?1:0)} 亿韩元`;tooltip.hidden=false;const panel=canvas.parentElement,tw=tooltip.offsetWidth,th=tooltip.offsetHeight;tooltip.style.left=`${Math.min(Math.max(mx,tw/2+8),panel.clientWidth-tw/2-8)}px`;tooltip.style.top=`${Math.max(my+canvas.offsetTop,th+18)}px`});canvas.addEventListener("mouseleave",()=>{canvas._hoverIndex=null;tooltip.hidden=true;drawChart(id)})})}
+    function renderMethods(){const m=data.methodology;document.getElementById("methods").innerHTML=Object.entries(m).map(([key,value])=>`<div class="method"><strong>${({leveragePct:"市值杠杆率",turnoverDays:"成交杠杆",creditDepositPct:"散户资金杠杆",stressScore:"综合压力分数"})[key]||key}</strong><span>${String(value).replaceAll("完整历史分位","历史分位")}</span></div>`).join("")}
+    async function boot(){try{const response=await fetch(DATA_URL,{cache:"no-store"});if(!response.ok)throw new Error(response.status);data=await response.json();renderMeta();renderKpis();renderMethods();drawAll();bindChartTooltips()}catch(error){document.getElementById("meta").innerHTML="<span>数据加载失败，请先运行数据脚本</span>"}}
+    document.getElementById("range").addEventListener("change",drawAll);window.addEventListener("resize",()=>data&&drawAll());boot();
+  </script>
+</body>
+</html>

@@ -46,6 +46,7 @@ jobs:
             fi
             python jpx_money_flow.py --site-dir site || echo "JPX refresh failed; publishing committed site/data/japan/latest.json."
             python twse_money_flow.py --site-dir site || echo "TWSE refresh failed; publishing committed site/data/taiwan/latest.json."
+            python korea_market_leverage.py --site-dir site || echo "Korea leverage refresh failed; publishing committed site/data/korea-leverage/latest.json."
           fi
 
       - uses: actions/configure-pages@v5

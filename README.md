@@ -85,6 +85,20 @@ site/data/taiwan/latest.json
 
 台股口径为：`外資及陸資(不含外資自營商) -> 外资`，`投信 -> 投信`，`自營商(自行買賣) + 自營商(避險) -> 自营商`，单位为亿新台币。
 
+生成韩国股市杠杆率数据：
+
+```bash
+python korea_market_leverage.py --site-dir site
+```
+
+该脚本从 KOFIA FreeSIS 获取 KOSPI/KOSDAQ 信用融资余额、投资者保证金、未结算欠款、强平金额、市值和成交额，默认从信用融资最早可查的 `1998-07-01` 开始生成完整历史：
+
+```text
+site/data/korea-leverage/latest.json
+```
+
+对应页面为 `site/korea-leverage.html`。市值杠杆率口径为信用融资余额除以 KOSPI 与 KOSDAQ 总市值；市值与成交额统计的资料源为 KRX。
+
 指定日期和股票：
 
 ```bash
