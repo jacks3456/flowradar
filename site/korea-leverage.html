@@ -82,7 +82,7 @@
     const n=(value,digits=2)=>Number(value||0).toLocaleString("zh-CN",{minimumFractionDigits:digits,maximumFractionDigits:digits});
     const cls=value=>Number(value)>0?"positive":Number(value)<0?"negative":"";
     function pill(label,score){const type=score>=95?"extreme":score>=70?"high":"";return `<span class="pill ${type}">${label}</span>`}
-    function renderMeta(){const m=data.meta;document.getElementById("meta").innerHTML=`<span>最新交易日 ${m.latestDate}</span><span>历史 ${m.historyDays} 个交易日</span><span>来源 ${m.source}</span>`}
+    function renderMeta(){const m=data.meta;document.getElementById("meta").innerHTML=`<span>最新交易日 ${m.latestDate}</span>`}
     function renderKpis(){const x=data.latest;document.getElementById("kpis").innerHTML=`
       <div class="kpi primary"><div class="label">全市场市值杠杆率</div><div class="value">${n(x.leveragePct,3)}%</div><div class="state">历史分位 ${n(x.leveragePercentile,1)}%</div></div>
       <div class="kpi"><div class="label">KOSPI / KOSDAQ</div><div class="value">${n(x.kospiLeveragePct,3)}% / ${n(x.kosdaqLeveragePct,3)}%</div><div class="state">历史分位 ${n(x.kospiLeveragePercentile,1)}% / ${n(x.kosdaqLeveragePercentile,1)}%</div></div>
