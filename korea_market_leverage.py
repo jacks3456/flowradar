@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import json
 import math
+import re
 from pathlib import Path
 
 import requests
@@ -35,6 +36,7 @@ def parse_args() -> argparse.Namespace:
 
 class KofiaClient:
     def __init__(self) -> None:
+        self.masked_value_count = 0
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -56,9 +58,23 @@ class KofiaClient:
                 "tmpV41": "04" if service in {"kospi", "kosdaq"} else "원",
             }
         }
-        response = self.session.post(META_URL, json=payload, timeout=45)
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = self.session.post(META_URL, json=payload, timeout=90)
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt == 2:
+                    raise
+        else:
+            raise RuntimeError(f"KOFIA {service} 请求失败: {last_error}")
         response.raise_for_status()
-        data = response.json()
+        text = response.text
+        if "#" in text:
+            self.masked_value_count += text.count("#")
+            text = re.sub(r"(-?\d+(?:\.\d+)?)#+", lambda match: match.group(0).replace("#", "0"), text)
+        data = json.loads(text)
         rows = data.get("ds1") or []
         if not rows:
             raise RuntimeError(f"KOFIA {service} 未返回数据")
@@ -208,7 +224,7 @@ def stress_label(score: float) -> str:
     return "偏低"
 
 
-def build_payload(rows: list[dict], start: dt.date, end: dt.date) -> dict:
+def build_payload(rows: list[dict], start: dt.date, end: dt.date, masked_value_count: int = 0) -> dict:
     if not rows:
         raise RuntimeError("合并后没有共同交易日")
     latest = rows[-1]
@@ -226,6 +242,8 @@ def build_payload(rows: list[dict], start: dt.date, end: dt.date) -> dict:
             "source": "KOFIA FreeSIS（市值与成交额的资料源为 KRX）",
             "sourceUrl": SOURCE_URL,
             "historyDays": len(rows),
+            "maskedValueCount": masked_value_count,
+            "maskedValueHandling": "KOFIA returns some large values with trailing #; hidden trailing digits are treated as 0.",
         },
         "methodology": {
             "leveragePct": "信用交易融资余额 / KOSPI与KOSDAQ总市值",
@@ -247,7 +265,7 @@ def main() -> int:
     client = KofiaClient()
     raw = {name: client.fetch(name, start, end) for name in SERVICES}
     rows = build_rows(raw)
-    payload = build_payload(rows, start, end)
+    payload = build_payload(rows, start, end, masked_value_count=client.masked_value_count)
     output = Path(args.output) if args.output else Path(args.site_dir) / "data" / "korea-leverage" / "latest.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
