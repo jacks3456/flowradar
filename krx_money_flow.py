@@ -123,7 +123,16 @@ class KrxClient:
     def post_json(self, bld: str, **params: object) -> dict:
         payload = {"bld": bld, "locale": "ko_KR"}
         payload.update(params)
-        response = self.session.post(KRX_JSON_URL, data=payload, timeout=30)
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = self.session.post(KRX_JSON_URL, data=payload, timeout=60)
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                time.sleep(self.pause_seconds * (attempt + 2))
+        else:
+            raise RuntimeError(f"KRX 请求失败: {last_error}")
         if response.status_code == 400 and "LOGOUT" in response.text:
             raise RuntimeError(
                 "KRX 返回 LOGOUT。请设置 KRX_COOKIE 环境变量或使用 --krx-cookie "
