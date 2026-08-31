@@ -16,7 +16,7 @@ import pandas as pd
 import requests
 
 
-TWSE_API_URL = "https://www.twse.com.tw/fund/BFI82U"
+TWSE_API_URL = "https://www.twse.com.tw/rwd/zh/fund/BFI82U"
 INVESTORS = ["外资", "投信", "自营商"]
 
 
@@ -33,10 +33,10 @@ class TwseClient:
         )
 
     def get_daily(self, trading_date: dt.date | None = None) -> dict:
-        params = {"response": "json", "type": "day"}
+        params = {"response": "json"}
         if trading_date is not None:
             ymd = trading_date.strftime("%Y%m%d")
-            params.update({"dayDate": ymd, "weekDate": ymd})
+            params["date"] = ymd
         last_error: Exception | None = None
         for attempt in range(2):
             try:
@@ -211,12 +211,35 @@ def write_json(path: Path, payload: dict) -> Path:
     return path
 
 
+def load_existing_rows(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    rows = []
+    for record in payload.get("marketFlow", []):
+        try:
+            rows.append(
+                {
+                    "日期": dt.datetime.strptime(record["日期"], "%Y-%m-%d").date(),
+                    "外资": float(record.get("外资", 0)),
+                    "投信": float(record.get("投信", 0)),
+                    "自营商": float(record.get("自营商", 0)),
+                    "合计": float(record.get("合计", 0)),
+                }
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return rows
+
+
 def collect_rows(client: TwseClient, end_date: dt.date, days: int, min_rows: int) -> list[dict]:
     rows = []
     seen_dates: set[dt.date] = set()
     attempts = max(days, min_rows * 2)
     for offset in range(attempts):
         trading_date = end_date - dt.timedelta(days=offset)
+        if trading_date.weekday() >= 5:
+            continue
         try:
             payload = client.get_daily(trading_date)
         except RuntimeError:
@@ -236,20 +259,19 @@ def main() -> None:
     client = TwseClient()
 
     try:
-        if args.end:
-            end_date = parse_date(args.end)
-        else:
-            latest_payload = client.get_daily()
-            latest = parse_daily_payload(latest_payload)
-            if not latest:
-                raise RuntimeError(f"TWSE 最新交易日资料不可用: {latest_payload.get('stat')}")
-            end_date = latest["日期"]
+        end_date = parse_date(args.end) if args.end else dt.date.today()
 
         rows = collect_rows(client, end_date, args.days, args.min_rows)
+        rows = load_existing_rows(output_path) + rows
         if not rows:
             raise RuntimeError("未取得 TWSE 三大法人买卖金额数据")
 
-        market_flow = pd.DataFrame(rows).sort_values("日期").reset_index(drop=True)
+        market_flow = (
+            pd.DataFrame(rows)
+            .drop_duplicates(subset=["日期"], keep="last")
+            .sort_values("日期")
+            .reset_index(drop=True)
+        )
         summary = build_summary(market_flow)
         payload = build_payload(market_flow, summary)
         write_json(output_path, payload)
