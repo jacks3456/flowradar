@@ -16,7 +16,7 @@ import pandas as pd
 import requests
 
 
-TWSE_API_URL = "https://www.twse.com.tw/rwd/zh/fund/BFI82U"
+TWSE_API_URL = "https://www.twse.com.tw/fund/BFI82U"
 INVESTORS = ["外资", "投信", "自营商"]
 
 
@@ -26,9 +26,9 @@ class TwseClient:
         self.session = requests.Session()
         self.session.headers.update(
             {
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "application/json,text/plain,*/*",
-                "Referer": "https://www.twse.com.tw/zh/trading/foreign/bfi82u.html",
+                "User-Agent": "curl/8.7.1",
+                "Accept": "*/*",
+                "Referer": "https://www.twse.com.tw/zh/page/trading/fund/BFI82U.html",
             }
         )
 
@@ -38,9 +38,14 @@ class TwseClient:
             ymd = trading_date.strftime("%Y%m%d")
             params.update({"dayDate": ymd, "weekDate": ymd})
         last_error: Exception | None = None
-        for attempt in range(3):
-            response = self.session.get(TWSE_API_URL, params=params, timeout=30)
+        for attempt in range(2):
             try:
+                response = self.session.get(
+                    TWSE_API_URL,
+                    params=params,
+                    timeout=8,
+                    allow_redirects=False,
+                )
                 response.raise_for_status()
                 payload = response.json()
                 time.sleep(self.pause_seconds)

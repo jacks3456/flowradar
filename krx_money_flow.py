@@ -124,7 +124,7 @@ class KrxClient:
         payload = {"bld": bld, "locale": "ko_KR"}
         payload.update(params)
         last_error: Exception | None = None
-        for attempt in range(3):
+        for attempt in range(6):
             try:
                 response = self.session.post(KRX_JSON_URL, data=payload, timeout=60)
                 break
