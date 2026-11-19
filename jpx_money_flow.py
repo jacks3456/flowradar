@@ -24,7 +24,9 @@ INVESTOR_TYPE_PATH = "/english/markets/statistics-equities/investor-type/index.h
 ARCHIVE_PATH_TEMPLATE = (
     "/english/markets/statistics-equities/investor-type/00-00-archives-{index:02d}.html"
 )
-VALUE_XLS_PATTERN = re.compile(r'href="([^"]*stock_val_1_[^"]*\.xls)"')
+VALUE_FILE_PATTERN = re.compile(
+    r'href="([^"]*(?:stock_val_1_[^"]*\.xls|stock_1_w_\d{8}_\d{8}\.xlsx))"'
+)
 DEFAULT_SHEET = "Tokyo & Nagoya"
 INVESTOR_ROWS = {
     "外资": ["Foreigners"],
@@ -72,7 +74,7 @@ class JpxClient:
         files: list[WeeklyFile] = []
         for page in pages:
             html = self.get_text(page)
-            for match in VALUE_XLS_PATTERN.finditer(html):
+            for match in VALUE_FILE_PATTERN.finditer(html):
                 path = match.group(1)
                 url = urljoin(JPX_BASE_URL, path)
                 if url in seen:
@@ -119,8 +121,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def file_code(path: str) -> str:
-    match = re.search(r"stock_val_1_(\d+)\.xls", path)
-    return match.group(1) if match else Path(path).name
+    old_match = re.search(r"stock_val_1_(\d+)\.xls", path)
+    if old_match:
+        return old_match.group(1)
+    new_match = re.search(r"stock_1_w_(\d{8})_(\d{8})\.xlsx", path)
+    if new_match:
+        return f"{new_match.group(1)}_{new_match.group(2)}"
+    return Path(path).name
 
 
 def parse_number(value: object) -> float:
@@ -185,7 +192,7 @@ def net_balance(raw: pd.DataFrame, label: str, column: int) -> float:
     return 0.0
 
 
-def parse_weekly_value_excel(content: bytes, source_url: str, sheet_name: str) -> dict:
+def parse_legacy_weekly_value_excel(content: bytes, source_url: str, sheet_name: str) -> dict:
     raw = pd.read_excel(BytesIO(content), sheet_name=sheet_name, header=None, engine="xlrd")
     end_date, period_label = parse_week_info(raw)
     column = balance_column(raw)
@@ -202,6 +209,70 @@ def parse_weekly_value_excel(content: bytes, source_url: str, sheet_name: str) -
         "合计": values["合计"],
         "来源": source_url,
     }
+
+
+def parse_combined_weekly_excel(content: bytes, source_url: str) -> dict:
+    date_match = re.search(r"stock_1_w_(\d{8})_(\d{8})\.xlsx", source_url)
+    if not date_match:
+        raise ValueError(f"JPX 新版 Excel 日期无法识别: {source_url}")
+    start_date = dt.datetime.strptime(date_match.group(1), "%Y%m%d").date()
+    end_date = dt.datetime.strptime(date_match.group(2), "%Y%m%d").date()
+
+    raw = pd.read_excel(BytesIO(content), sheet_name=0, header=None, engine="openpyxl")
+    if raw.shape[0] < 15 or raw.shape[1] < 59:
+        raise ValueError(f"JPX 新版 Excel 结构异常: {raw.shape}")
+
+    expected_headers = {
+        3: "Proprietary",
+        11: "Individuals",
+        19: "Foreigners",
+        27: "Securities Cos.",
+        31: "Institutions",
+    }
+    header_rows = {3: 2, 11: 3, 19: 3, 27: 3, 31: 3}
+    for column, label in expected_headers.items():
+        value = str(raw.iat[header_rows[column], column])
+        if label not in value:
+            raise ValueError(f"JPX 新版 Excel 缺少栏目 {label}: {value}")
+
+    market_row = next(
+        (
+            row
+            for row in range(raw.shape[0])
+            if "Tokyo & Nagoya" in str(raw.iat[row, 1])
+        ),
+        None,
+    )
+    if market_row is None:
+        raise ValueError("JPX 新版 Excel 中未找到 Tokyo & Nagoya Markets")
+    value_row = market_row + 1
+    if value_row >= raw.shape[0] or "Value" not in str(raw.iat[value_row, 2]):
+        raise ValueError("JPX 新版 Excel 中未找到 Tokyo & Nagoya 金额行")
+
+    def balances(columns: Iterable[int]) -> float:
+        for column in columns:
+            if "Balance" not in str(raw.iat[6, column]):
+                raise ValueError(f"JPX 新版 Excel 第 {column + 1} 列不是 Balance")
+        return sum(parse_number(raw.iat[value_row, column]) for column in columns) / 100_000
+
+    foreign = balances([21, 25])
+    retail = balances([13, 17])
+    institutions = balances([5, 9, 29, 33, 37, 41, 45, 49, 53, 57])
+    return {
+        "日期": end_date,
+        "区间": f"{start_date.month}/{start_date.day} - {end_date.month}/{end_date.day}",
+        "机构": institutions,
+        "散户": retail,
+        "外资": foreign,
+        "合计": foreign + institutions + retail,
+        "来源": source_url,
+    }
+
+
+def parse_weekly_value_excel(content: bytes, source_url: str, sheet_name: str) -> dict:
+    if source_url.endswith(".xlsx"):
+        return parse_combined_weekly_excel(content, source_url)
+    return parse_legacy_weekly_value_excel(content, source_url, sheet_name)
 
 
 def current_streak(values: Iterable[float]) -> int:
@@ -300,7 +371,8 @@ def save_raw(raw_dir: Path | None, weekly_file: WeeklyFile, content: bytes) -> N
     if raw_dir is None:
         return
     raw_dir.mkdir(parents=True, exist_ok=True)
-    (raw_dir / f"stock_val_1_{weekly_file.code}.xls").write_bytes(content)
+    suffix = Path(weekly_file.url).suffix or ".xls"
+    (raw_dir / f"jpx_weekly_{weekly_file.code}{suffix}").write_bytes(content)
 
 
 def main() -> None:
@@ -312,7 +384,7 @@ def main() -> None:
     try:
         weekly_files = client.weekly_value_files(args.weeks, args.archive_pages)
         if not weekly_files:
-            raise RuntimeError("未找到 JPX stock_val Excel 下载链接")
+            raise RuntimeError("未找到 JPX 周度投资者类别 Excel 下载链接")
 
         rows = []
         source_urls = []
